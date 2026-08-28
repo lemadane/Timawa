@@ -188,15 +188,22 @@ impl<'a> Parser<'a> {
             self.expect(&TokenKind::CloseParen, ")")?;
         }
 
+        let mut cases = Vec::new();
         let mut methods = Vec::new();
+
         if self.match_token(&TokenKind::OpenBrace) {
             while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
-                methods.push(self.parse_method_decl()?);
+                if self.check(&TokenKind::Case) {
+                    cases.push(self.parse_case_decl()?);
+                } else {
+                    methods.push(self.parse_method_decl()?);
+                }
             }
             let end_tok = self.expect(&TokenKind::CloseBrace, "}")?;
             Ok(ClassDecl {
                 name: class_name,
                 primary_params,
+                cases,
                 methods,
                 span: Span::combine(start_span, end_tok.span),
             })
@@ -204,10 +211,62 @@ impl<'a> Parser<'a> {
             Ok(ClassDecl {
                 name: class_name,
                 primary_params,
+                cases,
                 methods,
                 span: start_span,
             })
         }
+    }
+
+    fn parse_case_decl(&mut self) -> Result<CaseDecl, ()> {
+        let start_span = self.current_token.span;
+        self.expect(&TokenKind::Case, "case")?;
+
+        let case_name = match self.current_token.kind.clone() {
+            TokenKind::Identifier(n) => {
+                self.advance();
+                n
+            }
+            _ => {
+                self.diagnostics.push(Diagnostic::error("Expected case name", Some(self.current_token.span)));
+                return Err(());
+            }
+        };
+
+        let mut params = Vec::new();
+        if self.match_token(&TokenKind::OpenParen) {
+            if !self.check(&TokenKind::CloseParen) {
+                loop {
+                    let param_span = self.current_token.span;
+                    let param_type = self.parse_type_spec()?;
+                    let param_name = match self.current_token.kind.clone() {
+                        TokenKind::Identifier(n) => {
+                            self.advance();
+                            n
+                        }
+                        _ => {
+                            self.diagnostics.push(Diagnostic::error("Expected parameter name", Some(self.current_token.span)));
+                            return Err(());
+                        }
+                    };
+                    params.push(Param {
+                        name: param_name,
+                        type_spec: param_type,
+                        span: param_span,
+                    });
+                    if !self.match_token(&TokenKind::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.expect(&TokenKind::CloseParen, ")")?;
+        }
+
+        Ok(CaseDecl {
+            name: case_name,
+            params,
+            span: Span::combine(start_span, self.current_token.span),
+        })
     }
 
     fn parse_method_decl(&mut self) -> Result<MethodDecl, ()> {

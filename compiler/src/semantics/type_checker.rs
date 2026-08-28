@@ -60,6 +60,11 @@ impl TypeChecker {
                     methods.insert(param.name.clone(), (Vec::new(), field_ty));
                 }
 
+                for case in &cls.cases {
+                    let param_types = case.params.iter().map(|p| self.type_spec_to_type(&p.type_spec)).collect();
+                    methods.insert(case.name.clone(), (param_types, Type::Class { name: cls.name.clone() }));
+                }
+
                 for method in &cls.methods {
                     let param_types = method.params.iter().map(|p| self.type_spec_to_type(&p.type_spec)).collect();
                     let return_ty = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
@@ -243,6 +248,13 @@ impl TypeChecker {
                 }
                 match &callee.kind {
                     ExprKind::MemberAccess { object, member, .. } => {
+                        if let ExprKind::Identifier(class_name) = &object.kind {
+                            if let Some(info) = self.classes.get(class_name) {
+                                if let Some((_, ret_ty)) = info.methods.get(member) {
+                                    return Some(ret_ty.clone());
+                                }
+                            }
+                        }
                         if let ExprKind::This = &object.kind {
                             if let Some(info) = self.classes.get(&cls.name) {
                                 if let Some((_, ret_ty)) = info.methods.get(member) {

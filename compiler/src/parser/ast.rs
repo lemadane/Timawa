@@ -38,9 +38,17 @@ pub struct MethodDecl {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CaseDecl {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ClassDecl {
     pub name: String,
     pub primary_params: Vec<ConstructorParam>,
+    pub cases: Vec<CaseDecl>,
     pub methods: Vec<MethodDecl>,
     pub span: Span,
 }
