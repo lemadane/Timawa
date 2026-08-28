@@ -1,4 +1,4 @@
-use crate::diagnostics::{Diagnostic, Span};
+use crate::diagnostics::Diagnostic;
 use crate::parser::*;
 use crate::resolver::{Symbol, SymbolTable};
 use crate::types::Type;
@@ -11,9 +11,16 @@ pub struct ClassInfo {
     pub methods: HashMap<String, (Vec<Type>, Type)>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitInfo {
+    pub name: String,
+    pub methods: HashMap<String, (Vec<Type>, Type)>,
+}
+
 pub struct TypeChecker {
     symbol_table: SymbolTable,
     classes: HashMap<String, ClassInfo>,
+    traits: HashMap<String, TraitInfo>,
     current_class: Option<String>,
     current_return_type: Option<Type>,
     pub diagnostics: Vec<Diagnostic>,
@@ -24,6 +31,7 @@ impl TypeChecker {
         let mut checker = Self {
             symbol_table: SymbolTable::new(),
             classes: HashMap::new(),
+            traits: HashMap::new(),
             current_class: None,
             current_return_type: None,
             diagnostics: Vec::new(),
@@ -48,37 +56,49 @@ impl TypeChecker {
 
     pub fn check_program(&mut self, program: &Program) -> bool {
         for item in &program.items {
-            if let Item::Class(cls) = item {
-                let mut fields = HashMap::new();
-                let mut methods = HashMap::new();
-
-                for param in &cls.primary_params {
-                    let field_name = format!("_{}", param.name);
-                    let field_ty = self.type_spec_to_type(&param.type_spec);
-                    fields.insert(field_name.clone(), (field_ty.clone(), param.is_var));
-
-                    methods.insert(param.name.clone(), (Vec::new(), field_ty));
+            match item {
+                Item::Trait(tr) => {
+                    let mut methods = HashMap::new();
+                    for method in &tr.methods {
+                        let param_types = method.params.iter().map(|p| self.type_spec_to_type(&p.type_spec)).collect();
+                        let return_ty = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
+                        methods.insert(method.name.clone(), (param_types, return_ty));
+                    }
+                    self.traits.insert(tr.name.clone(), TraitInfo { name: tr.name.clone(), methods });
                 }
+                Item::Class(cls) => {
+                    let mut fields = HashMap::new();
+                    let mut methods = HashMap::new();
 
-                for case in &cls.cases {
-                    let param_types = case.params.iter().map(|p| self.type_spec_to_type(&p.type_spec)).collect();
-                    methods.insert(case.name.clone(), (param_types, Type::Class { name: cls.name.clone() }));
+                    for param in &cls.primary_params {
+                        let field_name = format!("_{}", param.name);
+                        let field_ty = self.type_spec_to_type(&param.type_spec);
+                        fields.insert(field_name.clone(), (field_ty.clone(), param.is_var));
+
+                        methods.insert(param.name.clone(), (Vec::new(), field_ty));
+                    }
+
+                    for case in &cls.cases {
+                        let param_types = case.params.iter().map(|p| self.type_spec_to_type(&p.type_spec)).collect();
+                        methods.insert(case.name.clone(), (param_types, Type::Class { name: cls.name.clone() }));
+                    }
+
+                    for method in &cls.methods {
+                        let param_types = method.params.iter().map(|p| self.type_spec_to_type(&p.type_spec)).collect();
+                        let return_ty = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
+                        methods.insert(method.name.clone(), (param_types, return_ty));
+                    }
+
+                    self.classes.insert(
+                        cls.name.clone(),
+                        ClassInfo {
+                            name: cls.name.clone(),
+                            fields,
+                            methods,
+                        },
+                    );
                 }
-
-                for method in &cls.methods {
-                    let param_types = method.params.iter().map(|p| self.type_spec_to_type(&p.type_spec)).collect();
-                    let return_ty = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
-                    methods.insert(method.name.clone(), (param_types, return_ty));
-                }
-
-                self.classes.insert(
-                    cls.name.clone(),
-                    ClassInfo {
-                        name: cls.name.clone(),
-                        fields,
-                        methods,
-                    },
-                );
+                _ => {}
             }
         }
 
@@ -249,8 +269,13 @@ impl TypeChecker {
                                 return Some(ret_ty.clone());
                             }
                         }
+                        if let Some(tr) = self.traits.get(&name) {
+                            if let Some((_, ret_ty)) = tr.methods.get(member) {
+                                return Some(ret_ty.clone());
+                            }
+                        }
                         self.diagnostics.push(Diagnostic::error(
-                            format!("Member '{}' not found on class '{}'", member, name),
+                            format!("Member '{}' not found on target '{}'", member, name),
                             Some(expr.span),
                         ));
                         None
@@ -267,6 +292,11 @@ impl TypeChecker {
                         if let ExprKind::Identifier(class_name) = &object.kind {
                             if let Some(info) = self.classes.get(class_name) {
                                 if let Some((_, ret_ty)) = info.methods.get(member) {
+                                    return Some(ret_ty.clone());
+                                }
+                            }
+                            if let Some(tr) = self.traits.get(class_name) {
+                                if let Some((_, ret_ty)) = tr.methods.get(member) {
                                     return Some(ret_ty.clone());
                                 }
                             }
@@ -312,7 +342,7 @@ impl TypeChecker {
                     }
                     _ => {}
                 }
-                val_ty
+                Some(val_ty)
             }
             ExprKind::ClassInstantiation { class_name, args } => {
                 for arg in args {

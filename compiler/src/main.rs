@@ -1,12 +1,14 @@
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::process::{self, Command};
 use talas_compiler::{DiagnosticEmitter, IrBuilder, Lexer, Parser, TextualLlvmEmitter, TypeChecker};
 
 fn print_usage() {
-    eprintln!("Talas Language Compiler v0.1.0");
-    eprintln!("Usage: talas <command> <source.talas> [options]");
+    eprintln!("Talas Language Compiler & Toolchain v0.1.0");
+    eprintln!("Usage: talas <command> [options]");
     eprintln!("Commands:");
+    eprintln!("  new <project-name>                  Create a new Talas project folder structure");
     eprintln!("  check <file.talas>                  Check source code for syntax and semantic errors");
     eprintln!("  emit-ir <file.talas>                Emit custom Typed Talas IR representation");
     eprintln!("  emit-llvm <file.talas> [-o <out>]   Emit textual LLVM IR (.ll) file");
@@ -14,14 +16,101 @@ fn print_usage() {
     eprintln!("  run <file.talas>                    Compile and execute source file immediately");
 }
 
+fn configure_runtime_linkage(cmd: &mut Command) {
+    let search_paths = vec![
+        "/usr/local/lib",
+        "target/release",
+        "target/debug",
+        "../target/release",
+        "../target/debug",
+        "../../target/release",
+        "../../target/debug",
+        ".",
+    ];
+
+    for path in search_paths {
+        let p = Path::new(path);
+        if p.join("libtalas_runtime.a").exists() || p.join("talas_runtime.lib").exists() {
+            cmd.arg("-L").arg(path);
+        }
+    }
+    cmd.arg("-L").arg("/usr/local/lib");
+    cmd.arg("-ltalas_runtime");
+    cmd.arg("-Wno-override-module");
+}
+
+fn handle_new_project(project_name: &str) {
+    let proj_dir = Path::new(project_name);
+    if proj_dir.exists() {
+        eprintln!("Error: Directory '{}' already exists.", project_name);
+        process::exit(1);
+    }
+
+    let src_dir = proj_dir.join("src");
+    if let Err(e) = fs::create_dir_all(&src_dir) {
+        eprintln!("Error creating project directory: {}", e);
+        process::exit(1);
+    }
+
+    // 1. Create talas.toml
+    let toml_content = format!(
+        r#"[package]
+name = "{}"
+version = "0.1.0"
+edition = "2026"
+
+[dependencies]
+"#,
+        project_name
+    );
+    let _ = fs::write(proj_dir.join("talas.toml"), toml_content);
+
+    // 2. Create README.md
+    let readme_content = format!(
+        "# {}\n\nA new project written in the Talas programming language.\n\n## Running the Project\n\n```bash\ntalas run src/main.talas\n```\n",
+        project_name
+    );
+    let _ = fs::write(proj_dir.join("README.md"), readme_content);
+
+    // 3. Create src/main.talas
+    let main_talas_content = r#"class Application {
+    main() {
+        print(`Hello from Talas!`)
+    }
+}
+"#;
+    let _ = fs::write(src_dir.join("main.talas"), main_talas_content);
+
+    println!("Created new Talas project '{}'!", project_name);
+    println!("To get started:");
+    println!("  cd {}", project_name);
+    println!("  talas run src/main.talas");
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() < 3 {
+    if args.len() < 2 {
         print_usage();
         process::exit(1);
     }
 
     let command = &args[1];
+
+    if command == "new" {
+        if args.len() < 3 {
+            eprintln!("Error: Please specify a project name.");
+            eprintln!("Usage: talas new <project-name>");
+            process::exit(1);
+        }
+        handle_new_project(&args[2]);
+        return;
+    }
+
+    if args.len() < 3 {
+        print_usage();
+        process::exit(1);
+    }
+
     let mut file_path = String::new();
     let mut out_binary = String::new();
     let mut is_release = false;
@@ -69,7 +158,7 @@ fn main() {
     }
 
     let mut checker = TypeChecker::new();
-    let typed_program = checker.check_program(&program);
+    checker.check_program(&program);
 
     if !checker.diagnostics.is_empty() {
         DiagnosticEmitter::emit(&checker.diagnostics, &source_code);
@@ -121,6 +210,7 @@ fn main() {
 
             let mut clang_cmd = Command::new("clang");
             clang_cmd.arg(&ll_path).arg("-o").arg(&out_binary);
+            configure_runtime_linkage(&mut clang_cmd);
 
             if is_release {
                 clang_cmd.arg("-O3").arg("-flto");
@@ -135,7 +225,7 @@ fn main() {
                 }
                 _ => {
                     println!("LLVM IR generated at '{}'. To link manually:", ll_path);
-                    println!("  clang {} -o {}", ll_path, out_binary);
+                    println!("  clang {} -ltalas_runtime -o {}", ll_path, out_binary);
                 }
             }
         }
@@ -155,11 +245,11 @@ fn main() {
                 process::exit(1);
             }
 
-            let compile_status = Command::new("clang")
-                .arg(&ll_path)
-                .arg("-o")
-                .arg(&bin_path)
-                .status();
+            let mut clang_cmd = Command::new("clang");
+            clang_cmd.arg(&ll_path).arg("-o").arg(&bin_path);
+            configure_runtime_linkage(&mut clang_cmd);
+
+            let compile_status = clang_cmd.status();
 
             match compile_status {
                 Ok(s) if s.success() => {

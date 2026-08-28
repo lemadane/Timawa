@@ -30,7 +30,7 @@
       "patterns": [
         {
           "name": "keyword.control.talas",
-          "match": "\\b(class|final|var|if|else|for|break|continue|switch|case|default|yield|return|import|as|is|with|in|async|await)\\b"
+          "match": "\\b(class|trait|final|var|if|else|for|break|continue|switch|case|default|yield|return|import|as|is|with|in|async|await)\\b"
         },
         {
           "name": "keyword.operator.word.talas",

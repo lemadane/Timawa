@@ -3,7 +3,7 @@ use crate::diagnostics::{Diagnostic, Span};
 use crate::lexer::{Lexer, Token, TokenKind};
 
 #[derive(PartialEq, PartialOrd, Clone, Copy)]
-enum Precedence {
+pub enum Precedence {
     None,
     Assignment,     // =, ??=
     With,           // with
@@ -115,7 +115,7 @@ impl<'a> Parser<'a> {
                 return;
             }
             match self.current_token.kind {
-                TokenKind::Class | TokenKind::Import | TokenKind::If | TokenKind::For | TokenKind::Return => return,
+                TokenKind::Class | TokenKind::Trait | TokenKind::Import | TokenKind::If | TokenKind::For | TokenKind::Return => return,
                 _ => self.advance(),
             }
         }
@@ -124,6 +124,7 @@ impl<'a> Parser<'a> {
     fn parse_item(&mut self) -> Result<Item, ()> {
         match self.current_token.kind {
             TokenKind::Class => self.parse_class_decl().map(Item::Class),
+            TokenKind::Trait => self.parse_trait_decl().map(Item::Trait),
             TokenKind::Import => self.parse_import_decl().map(Item::Import),
             _ => {
                 self.diagnostics.push(Diagnostic::error(
@@ -133,6 +134,35 @@ impl<'a> Parser<'a> {
                 Err(())
             }
         }
+    }
+
+    fn parse_trait_decl(&mut self) -> Result<TraitDecl, ()> {
+        let start_span = self.current_token.span;
+        self.expect(&TokenKind::Trait, "trait keyword")?;
+
+        let trait_name = match self.current_token.kind.clone() {
+            TokenKind::Identifier(name) => {
+                self.advance();
+                name
+            }
+            _ => {
+                self.diagnostics.push(Diagnostic::error("Expected trait name", Some(self.current_token.span)));
+                return Err(());
+            }
+        };
+
+        self.expect(&TokenKind::OpenBrace, "{")?;
+        let mut methods = Vec::new();
+        while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
+            methods.push(self.parse_method_decl()?);
+        }
+        let end_tok = self.expect(&TokenKind::CloseBrace, "}")?;
+
+        Ok(TraitDecl {
+            name: trait_name,
+            methods,
+            span: Span::combine(start_span, end_tok.span),
+        })
     }
 
     fn parse_class_decl(&mut self) -> Result<ClassDecl, ()> {
@@ -325,19 +355,24 @@ impl<'a> Parser<'a> {
         }
         self.expect(&TokenKind::CloseParen, ")")?;
 
-        self.expect(&TokenKind::OpenBrace, "{")?;
         let mut body = Vec::new();
-        while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
-            body.push(self.parse_stmt()?);
-        }
-        let end_tok = self.expect(&TokenKind::CloseBrace, "}")?;
+        let end_span = if self.match_token(&TokenKind::Semicolon) {
+            self.current_token.span
+        } else {
+            self.expect(&TokenKind::OpenBrace, "'{' or ';'")?;
+            while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
+                body.push(self.parse_stmt()?);
+            }
+            let end_tok = self.expect(&TokenKind::CloseBrace, "}")?;
+            end_tok.span
+        };
 
         Ok(MethodDecl {
             name: method_name,
             params,
             return_type,
             body,
-            span: Span::combine(start_span, end_tok.span),
+            span: Span::combine(start_span, end_span),
         })
     }
 
@@ -684,10 +719,6 @@ impl<'a> Parser<'a> {
             }),
             TokenKind::StringLiteral(val) => Ok(Expr {
                 kind: ExprKind::StringLiteral(val),
-                span: tok.span,
-            }),
-            TokenKind::BoolLiteral(val) => Ok(Expr {
-                kind: ExprKind::BoolLiteral(val),
                 span: tok.span,
             }),
             TokenKind::True => Ok(Expr {

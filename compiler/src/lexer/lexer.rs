@@ -279,6 +279,7 @@ impl<'a> Lexer<'a> {
 
         match ident_str {
             "class" => TokenKind::Class,
+            "trait" => TokenKind::Trait,
             "final" => TokenKind::Final,
             "var" => TokenKind::Var,
             "if" => TokenKind::If,

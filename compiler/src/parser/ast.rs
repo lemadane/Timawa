@@ -62,8 +62,16 @@ pub struct ImportDecl {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TraitDecl {
+    pub name: String,
+    pub methods: Vec<MethodDecl>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Item {
     Class(ClassDecl),
+    Trait(TraitDecl),
     Import(ImportDecl),
 }
 

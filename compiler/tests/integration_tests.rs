@@ -67,8 +67,29 @@ fn test_talas_sum_classes_parsing() {
         }
     "#;
 
+#[test]
+fn test_talas_trait_parsing() {
+    let source = r#"
+        trait Printable {
+            printDetails();
+            string getHeader() {
+                return `=== PRINTABLE ===`
+            }
+        }
+
+        class User(long id, string name) {
+            printDetails() {
+                print(`User #${this._id}: ${this._name}`)
+            }
+        }
+    "#;
+
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer);
     let program = parser.parse_program();
-    assert!(parser.diagnostics.is_empty(), "Parsing Sum Class failed: {:?}", parser.diagnostics);
+    assert!(parser.diagnostics.is_empty(), "Parsing trait failed: {:?}", parser.diagnostics);
+
+    let mut checker = TypeChecker::new();
+    let is_valid = checker.check_program(&program);
+    assert!(is_valid, "Type checking trait failed: {:?}", checker.diagnostics);
 }

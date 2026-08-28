@@ -24,57 +24,62 @@
 - **Aggressive Inlining**: LLVM inlines instance method bodies directly into caller sites.
 - **Cache Locality**: Class instance headers do not store virtual pointer (`vptr`) fields, resulting in smaller memory headers and superior CPU L1/L2/L3 cache hit rates.
 
-### 3. Unified `class` Model & Enums via Sum Classes (No `enum` Keyword)
+### 3. Structural `trait` Subtyping (No `implements` Keyword)
+- **Behavioral Contracts**: Abstraction and behavior reuse are declared using `trait`.
+- **Implicit Structural Subtyping**: Classes satisfy traits **implicitly** based on method signatures (like Go and TypeScript, but powered by 0-cost LLVM static dispatch like Rust).
+- **Default Method Logic**: Traits can supply default method implementations, enabling code reuse without class inheritance (`extends`).
+
+### 4. Unified `class` Model & Enums via Sum Classes (No `enum` Keyword)
 - **Single Type Keyword (`class`)**: `class` is the sole user-defined type keyword (no `enum`, `struct`, `record`, or `union`).
 - **Primary Constructor Fields**: `class User(long id, string name, var int age)` automatically generates package-private backing fields (`_id`, `_name`, `_age`) and public getter methods (`id()`, `name()`, `age()`).
 - **Enums via Sum Classes**: Enumerations and algebraic variants are declared using `case` clauses inside a `class` (e.g. `class Status { case Pending; case Approved(long orderId) }`).
 
-### 4. No `void` Keyword & Implicit Void Return Types
+### 5. No `void` Keyword & Implicit Void Return Types
 - **No `void` Keyword**: The `void` keyword does not exist in Talas.
 - **Implicit Void Return Type**: Methods declared without a return type automatically return void (`main() { ... }` or `birthday() { ... }`).
 - **Explicit Return Types**: Methods returning values specify the return type before the method name (`int getAge() { return this._age }`).
 
-### 5. Explicit `this.` Qualification
+### 6. Explicit `this.` Qualification
 - All instance field and method accesses inside a class **must** be explicitly prefixed with `this.`. Unqualified access produces a compiler error.
 
-### 6. Naming-Based Access Control
+### 7. Naming-Based Access Control
 - Visibility is governed by identifier prefixes (`name` = public, `_name` = package-private/internal). There are no `public`, `private`, or `protected` keywords.
 
-### 7. Built-in `print` Directive
+### 8. Built-in `print` Directive
 - `print(...)` is the sole built-in output directive.
 - **Always Appends Newline**: `print` always appends a newline (equivalent to Java's `System.out.println` or Python's `print()`).
 
-### 8. Truthy & Falsy Conditions
+### 9. Truthy & Falsy Conditions
 - Conditions in `if (condition)` and `for (condition)` accept truthy and falsy values:
   - **Falsy**: `false`, `null`, `0`, `0.0`, `-0.0`, `` `` (empty string).
   - **Truthy**: `true`, non-zero numbers, non-empty strings, class instances, anonymous objects.
 - **Flow-Sensitive Narrowing**: Evaluating a nullable `User?` in an `if (user)` block automatically narrows `user` to non-null `User`.
 
-### 9. Word-Based Boolean Operators & `not` Keyword
+### 10. Word-Based Boolean Operators & `not` Keyword
 - Logical operators use English words: `not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`. The `!` symbol is prohibited (replaced by `not`).
 
-### 10. First-Class Nullability & Optional Operators
+### 11. First-Class Nullability & Optional Operators
 - Native `null` (never `nil`) with postfix `Type?` (`User?`).
 - Optional chaining (`?.`), null coalescing (`??`), and null-coalescing assignment (`??=`).
 
-### 11. Collections Policy & Unified `for` Loops (No `while` Keyword)
+### 12. Collections Policy & Unified `for` Loops (No `while` Keyword)
 - **`for` is the Sole Loop Keyword**: There is no `while` or `do-while` keyword in Talas.
 - **`break` & `continue`**: `break` exits the nearest loop; `continue` skips to the next iteration.
 - **`Array<T>`**: Fixed-size contiguous buffer (`Array<int>(10)`).
 - **`List<T>`**: Dynamic growable sequence (`[1, 2, 3]` literal syntax, `.add()`, `.remove()`).
 - **`Map<K, V>`**: Key-value hash map (`[1000L: `Lem`]` literal syntax, bracket lookup returns `V?`, key-value `for (k, v in map)` iteration).
 
-### 12. Pattern Matching `switch` Expressions & Statements
+### 13. Pattern Matching `switch` Expressions & Statements
 - **First-Class Expressions**: `switch` can evaluate directly to a value (`final x = switch (...)`).
 - **No Fall-Through**: Cases do not fall through (no `break` required inside cases).
 - **Pattern Support**: Matches constant values, Sum Class variant payloads, type checks (`is`), guard clauses (`if`), multiple OR values, and anonymous objects.
 
-### 13. Concurrency (`async` / `await`)
+### 14. Concurrency (`async` / `await`)
 - **Instance Method Spawning**: Spawning a task executes an instance method concurrently: `async worker.process(1)`.
 - **$M:N$ Scheduler**: Maps $M$ user-space lightweight tasks onto $N$ native OS threads using growable $2\text{ KB}$ stacks.
 - **Inter-Task Channels**: Communication via typed `Channel<T>` objects.
 
-### 14. Lambdas & Method References
+### 15. Lambdas & Method References
 - **Brace Syntax**: `{ (x) -> x * 2 }`.
 - **Compiler Lowering**: Lowered to synthetic, immutable single-method closure classes.
 - **Method References**: `this.methodName` syntax for instance method callbacks.
@@ -105,58 +110,6 @@ code --install-extension talas-vscode-0.1.0.vsix
 
 ---
 
-## Why Software Engineering & Performance are Superior in Talas
-
-Not only does Talas function nicely without `static` and `singleton` keywords—it actually produces cleaner, more testable, and significantly faster software because of their absence.
-
-### 1. Why You Don't Miss the `static` Keyword
-
-In languages like Java or C#, `static` is used for 3 primary reasons. Talas solves all 3 far more elegantly:
-
-| Traditional Use of `static` | How Talas Solves It Without `static` | Why Talas Solution is Better |
-| :--- | :--- | :--- |
-| **1. Utility Functions** (`Math.abs()`) | **Instance Utilities / Primitive Methods**<br>`math = Math(); math.abs(-42)` or `-42.abs()` | Eliminates procedural code inside OOP; clean object scoping. |
-| **2. Entry Point** (`public static void main`) | **Application Instance Method**<br>`class Application { main() { ... } }` | Pure OOP consistency; compiler handles native C-ABI bootstrapping. |
-| **3. Global State** (`static int counter`) | **Application-Scoped Instance**<br>`final appState = AppState()` | Prevents multi-threaded data races on global variables. |
-
-### 2. Why You Don't Miss a `singleton` Keyword
-
-In Java or C#, static singletons create major software engineering problems:
-- **Hidden Dependencies**: Classes secretly reach out to `Database.getInstance()`, making it impossible to see what a class depends on.
-- **Testing Nightmares**: Tests share global static state, leading to flaky tests where one test mutates state used by another.
-- **Race Conditions**: Multi-threaded access to static singletons requires complex `synchronized` locks.
-
-#### In Talas (Application-Scoped Dependency Injection):
-In Talas, a "Singleton" is simply an instance created **once** in `Application.main()` and explicitly passed to classes that need it:
-
-```java
-class Application {
-    main() {
-        // Created ONCE at startup — acts as an application-level singleton
-        final db = DatabaseConnection(`postgres://localhost:5432`)
-
-        // Explicitly passed to services
-        final userService = UserService(db)
-        final orderService = OrderService(db)
-
-        userService.findUser(1000)
-    }
-}
-```
-
-**Why this is superior**:
-- Every dependency is 100% visible in the primary constructor `UserService(DatabaseConnection db)`.
-- Unit testing is effortless: you can pass a mock `TestDatabaseConnection` without resetting global static state.
-
-### 3. The Secret Performance Boost
-
-By eliminating `static` methods and `extends` (inheritance):
-- **Direct Machine Calls**: LLVM compiles every Talas instance method directly to a fixed machine symbol (`@User_birthday`). There are no virtual method table (vtable) pointer lookups.
-- **0-Cost Function Calls**: LLVM aggressively inlines method bodies directly into call sites, reducing function call time to 0 nanoseconds.
-- **No Thread Lock Bottlenecks**: There are no static class-loader locks or static mutex bottlenecks during startup.
-
----
-
 ## Code Examples
 
 ### 1. Unified Classes & Methods
@@ -179,7 +132,52 @@ class User(
 }
 ```
 
-### 2. The `not` Keyword Use Cases
+### 2. Structural `trait` Subtyping (No `implements` Keyword)
+
+In Talas, `trait` provides behavioral contracts and default method bodies. Classes satisfy traits **implicitly** without an `implements` keyword:
+
+```java
+trait Printable {
+    // Abstract method signature (implicit void return type)
+    printDetails()
+
+    // Default method implementation
+    string getHeader() {
+        return `=== PRINTABLE ITEM ===`
+    }
+}
+
+// Class definitions — NO 'implements' keyword needed!
+class User(long id, string name) {
+    printDetails() {
+        print(`User #${this._id}: ${this._name}`)
+    }
+}
+
+class Invoice(long id, decimal total) {
+    printDetails() {
+        print(`Invoice #${this._id}: \$${this._total}`)
+    }
+}
+
+class Application {
+    render(Printable item) {
+        print(item.getHeader())
+        item.printDetails()
+    }
+
+    main() {
+        final user = User(1000L, `Lem`)
+        final invoice = Invoice(5001L, 199.99)
+
+        // Both User and Invoice implicitly satisfy Printable
+        this.render(user)
+        this.render(invoice)
+    }
+}
+```
+
+### 3. The `not` Keyword Use Cases
 
 In Talas, the exclamation symbol `!` is not a valid operator. Logical negation and type checks use the `not` keyword:
 
@@ -208,7 +206,7 @@ class Application {
 }
 ```
 
-### 3. Composition Over Inheritance Use Cases
+### 4. Composition Over Inheritance Use Cases
 
 Because Talas has **no `extends` keyword**, code reuse and polymorphism are achieved cleanly through **Composition & Delegation**:
 
@@ -258,7 +256,7 @@ class Application {
 }
 ```
 
-### 4. Singleton Implementation via Application-Scoped Dependency Injection
+### 5. Singleton Implementation via Application-Scoped Dependency Injection
 
 Because Talas omits global static variables, singletons are created once at application startup and passed into dependent services:
 
@@ -296,7 +294,7 @@ class Application {
 }
 ```
 
-### 5. All Enum Use Cases via Sum Classes
+### 6. All Enum Use Cases via Sum Classes
 
 In Talas, enumerations are declared using **Sum Classes** (defining `case` clauses inside a `class`):
 
@@ -368,7 +366,7 @@ class Application {
 }
 ```
 
-### 6. All `switch` Control Flow Use Cases
+### 7. All `switch` Control Flow Use Cases
 
 In Talas, `switch` is a first-class expression and statement supporting 6 core pattern-matching use cases (no fall-through, no `break` required inside cases):
 
@@ -433,7 +431,7 @@ class Application {
 }
 ```
 
-### 7. All `for` Loop Use Cases (With `break` and `continue`)
+### 8. All `for` Loop Use Cases (With `break` and `continue`)
 
 Talas uses `for` as its **sole loop keyword** (no `while` or `do-while`).
 
@@ -491,7 +489,7 @@ class Application {
 }
 ```
 
-### 8. Truthy & Falsy Control Flow with Word Booleans
+### 9. Truthy & Falsy Control Flow with Word Booleans
 
 In Talas, conditions in `if (condition)` statements evaluate **truthiness and falsiness** without requiring explicit boolean comparisons:
 
@@ -516,7 +514,7 @@ class Application {
 }
 ```
 
-### 9. Word-Based Logical Operators (`not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`)
+### 10. Word-Based Logical Operators (`not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`)
 
 Talas uses English words for all boolean operators instead of symbols like `!`, `&&`, `||`:
 
@@ -550,7 +548,7 @@ class Application {
 }
 ```
 
-### 10. Concurrency with `async`, `await`, and `Channel<T>`
+### 11. Concurrency with `async`, `await`, and `Channel<T>`
 
 In Talas, lightweight tasks are spawned on instance methods using the `async` keyword and awaited with `await`. Tasks communicate using typed `Channel<T>` instances:
 
@@ -613,22 +611,30 @@ source "$HOME/.cargo/env"
 ### 2. Build & Install
 
 ```bash
-cargo build --release
+cargo build --release --workspace
 sudo cp target/release/talas-compiler /usr/local/bin/talas
+sudo cp target/release/libtalas_runtime.a /usr/local/lib/libtalas_runtime.a
 ```
 
 ### 3. Usage Commands
 
 ```bash
-# Check source code for syntax and semantic errors
-talas check app.talas
+# 1. Create a new Talas project folder structure
+talas new my_app
+cd my_app
 
-# Fast compile & run immediately
-talas run app.talas
+# 2. Fast syntax and static type check
+talas check src/main.talas
 
-# Compile standalone release executable
-talas build --release app.talas -o my_app
+# 3. Fast compile & execute immediately (1-step execution)
+talas run src/main.talas
+
+# 4. Build standalone native release executable (with -O3 & LTO optimization)
+talas build --release src/main.talas -o my_app
 ./my_app
+
+# 5. (Optional) Inspect generated textual LLVM IR for compiler debugging
+talas emit-llvm src/main.talas -o main.ll
 ```
 
 ---

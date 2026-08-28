@@ -1,54 +1,40 @@
-use crate::ir::*;
+use crate::ir::nodes::*;
 use crate::parser::BinaryOp;
 use crate::types::Type;
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 pub struct TextualLlvmEmitter {
     output: String,
-    string_constants: Vec<(String, String)>,
-    declared_externs: HashSet<String>,
+    string_constants: HashMap<String, String>,
+    string_counter: usize,
 }
 
 impl TextualLlvmEmitter {
     pub fn new() -> Self {
         Self {
             output: String::new(),
-            string_constants: Vec::new(),
-            declared_externs: HashSet::new(),
-        }
-    }
-
-    fn type_to_llvm(&self, ty: &Type) -> String {
-        match ty {
-            Type::Int => "i32".into(),
-            Type::Decimal => "double".into(),
-            Type::Byte => "i8".into(),
-            Type::Long => "i64".into(),
-            Type::Bool => "i1".into(),
-            Type::String => "i8*".into(),
-            Type::Void => "void".into(),
-            Type::Class { name } => format!("%{}*", name),
-            Type::Nullable(inner) => self.type_to_llvm(inner),
-            Type::AnonymousObject { .. } => "i8*".into(),
-            Type::Function { .. } => "i8*".into(),
+            string_constants: HashMap::new(),
+            string_counter: 0,
         }
     }
 
     pub fn emit_program(&mut self, ir_program: &IrProgram) -> String {
         self.output.clear();
-        self.string_constants.clear();
-        self.declared_externs.clear();
 
-        self.output.push_str("; ModuleID = 'talas_module'\n");
-        self.output.push_str("source_filename = \"talas\"\n\n");
+        // Target Data Layout
+        self.output.push_str("; Target Data Layout for Talas Native Binary\n");
+        self.output.push_str("target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"\n\n");
 
-        // Runtime symbols
+        // External runtime declarations
         self.output.push_str("declare void @talas_runtime_init()\n");
         self.output.push_str("declare void @talas_runtime_cleanup()\n");
         self.output.push_str("declare i8* @talas_alloc(i64, i64)\n");
-        self.output.push_str("declare void @talas_print_str(i8*)\n\n");
+        self.output.push_str("declare void @talas_print_str(i8*)\n");
+        self.output.push_str("declare void @talas_print_i64(i64)\n");
+        self.output.push_str("declare void @talas_print_f64(double)\n");
+        self.output.push_str("declare void @talas_print_bool(i1)\n\n");
 
-        // Emit class struct definitions
+        // Object layouts
         for cls in &ir_program.classes {
             let field_types = cls
                 .fields
@@ -62,32 +48,41 @@ impl TextualLlvmEmitter {
 
         // Emit functions
         for func in &ir_program.functions {
-            self.output.push_str(&self.emit_function(func));
+            let func_str = self.emit_function(func);
+            self.output.push_str(&func_str);
             self.output.push('\n');
         }
 
-        // Emit synthetic C-ABI main entry point if Application.main exists
-        let has_app_main = ir_program.functions.iter().any(|f| f.class_name == "Application" && f.name == "main");
-        if has_app_main {
+        // Emit synthetic C-ABI main entry point if any class contains a main() method
+        let main_fn = ir_program
+            .functions
+            .iter()
+            .find(|f| f.name.eq_ignore_ascii_case("main"));
+
+        if let Some(m_fn) = main_fn {
+            let target_symbol = format!("{}_{}", m_fn.class_name, m_fn.name);
+            let class_type = format!("%{}", m_fn.class_name);
             self.output.push_str("define i32 @main(i32 %argc, i8** %argv) {\n");
             self.output.push_str("entry:\n");
             self.output.push_str("  call void @talas_runtime_init()\n");
             self.output.push_str("  %raw_mem = call i8* @talas_alloc(i64 32, i64 8)\n");
-            self.output.push_str("  %app = bitcast i8* %raw_mem to %Application*\n");
-            self.output.push_str("  call void @Application_main(%Application* %app)\n");
+            self.output.push_str(&format!("  %app = bitcast i8* %raw_mem to {}*\n", class_type));
+            self.output.push_str(&format!("  call void @{}({}* %app)\n", target_symbol, class_type));
             self.output.push_str("  call void @talas_runtime_cleanup()\n");
             self.output.push_str("  ret i32 0\n");
             self.output.push_str("}\n\n");
         }
 
         // Global string constants
-        for (label, str_val) in &self.string_constants {
+        let constants = self.string_constants.clone();
+        for (label, str_val) in &constants {
             let bytes_len = str_val.as_bytes().len() + 1;
+            let escaped = self.escape_llvm_string(str_val);
             self.output.push_str(&format!(
                 "@{} = private unnamed_addr constant [{} x i8] c\"{}\", align 1\n",
                 label,
                 bytes_len,
-                self.escape_llvm_string(str_val)
+                escaped
             ));
         }
 
@@ -180,10 +175,10 @@ impl TextualLlvmEmitter {
                 };
                 format!("%{} = {} {} {}, {}", dest.0, op_str, ty_str, l_str, r_str)
             }
-            IrInstruction::InstantiateClass { dest, class_name, .. } => {
+            IrInstruction::InstantiateClass { dest, class_name: _, .. } => {
                 format!("%{} = call i8* @talas_alloc(i64 32, i64 8)", dest.0)
             }
-            IrInstruction::CallMethod { dest, class_name, method_name, receiver, args, ret_ty } => {
+            IrInstruction::CallMethod { dest, class_name, method_name, receiver, args: _, ret_ty } => {
                 let fn_symbol = format!("{}_{}", class_name, method_name);
                 let ret_ty_str = self.type_to_llvm(ret_ty);
                 let rx_str = self.emit_operand(receiver);
@@ -202,12 +197,12 @@ impl TextualLlvmEmitter {
                     format!("call {} @{}({})", ret_ty_str, symbol, args_str)
                 }
             }
-            IrInstruction::Jump { target } => {
-                format!("br label %{}", target)
-            }
             IrInstruction::Branch { cond, then_block, else_block } => {
                 let cond_str = self.emit_operand(cond);
                 format!("br i1 {}, label %{}, label %{}", cond_str, then_block, else_block)
+            }
+            IrInstruction::Jump { target } => {
+                format!("br label %{}", target)
             }
             IrInstruction::Return { val } => {
                 if let Some(v) = val {
@@ -221,17 +216,33 @@ impl TextualLlvmEmitter {
 
     fn emit_operand(&mut self, op: &IrOperand) -> String {
         match op {
+            IrOperand::Register(reg, _) => format!("%{}", reg.0),
             IrOperand::ConstantInt(v) => v.to_string(),
             IrOperand::ConstantDecimal(v) => format!("{:.6}", v),
-            IrOperand::ConstantBool(v) => (if *v { 1 } else { 0 }).to_string(),
-            IrOperand::Null => "null".to_string(),
-            IrOperand::ConstantString(s) => {
-                let label = format!(".str.{}", self.string_constants.len());
-                self.string_constants.push((label.clone(), s.clone()));
-                let bytes_len = s.as_bytes().len() + 1;
-                format!("getelementptr inbounds ([{} x i8], [{} x i8]* @{}, i64 0, i64 0)", bytes_len, bytes_len, label)
+            IrOperand::ConstantString(v) => {
+                let label = format!("str_{}", self.string_counter);
+                self.string_counter += 1;
+                self.string_constants.insert(label.clone(), v.clone());
+                format!("getelementptr inbounds ([{} x i8], [{} x i8]* @{}, i32 0, i32 0)", v.as_bytes().len() + 1, v.as_bytes().len() + 1, label)
             }
-            IrOperand::Register(r, _) => format!("%{}", r.0),
+            IrOperand::ConstantBool(v) => (if *v { "true" } else { "false" }).to_string(),
+            IrOperand::Null => "null".to_string(),
+        }
+    }
+
+    fn type_to_llvm(&self, ty: &Type) -> String {
+        match ty {
+            Type::Int => "i32".to_string(),
+            Type::Decimal => "double".to_string(),
+            Type::Byte => "i8".to_string(),
+            Type::Long => "i64".to_string(),
+            Type::Bool => "i1".to_string(),
+            Type::String => "i8*".to_string(),
+            Type::Void => "void".to_string(),
+            Type::Class { name } => format!("%{}*", name),
+            Type::Nullable(inner) => self.type_to_llvm(inner),
+            Type::AnonymousObject { .. } => "i8*".to_string(),
+            Type::Function { .. } => "i8*".to_string(),
         }
     }
 }

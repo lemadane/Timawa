@@ -78,7 +78,53 @@ class User(
 
 ---
 
-## 5. Singletons via Application-Scoped Dependency Injection
+## 5. Structural `trait` Subtyping (No `implements` Keyword)
+
+Abstraction and behavior reuse in Talas are defined using **`trait`**. Classes satisfy traits **implicitly** based on method signatures without needing an `implements` keyword:
+
+```java
+trait Printable {
+    // Abstract method signature
+    printDetails()
+
+    // Default method implementation
+    string getHeader() {
+        return `=== PRINTABLE ITEM ===`
+    }
+}
+
+// Class definitions — NO 'implements' keyword needed!
+class User(long id, string name) {
+    printDetails() {
+        print(`User #${this._id}: ${this._name}`)
+    }
+}
+
+class Invoice(long id, decimal total) {
+    printDetails() {
+        print(`Invoice #${this._id}: \$${this._total}`)
+    }
+}
+
+class Application {
+    render(Printable item) {
+        print(item.getHeader())
+        item.printDetails()
+    }
+
+    main() {
+        final user = User(1000L, `Lem`)
+        final invoice = Invoice(5001L, 199.99)
+
+        this.render(user)
+        this.render(invoice)
+    }
+}
+```
+
+---
+
+## 6. Singletons via Application-Scoped Dependency Injection
 
 Because Talas has no static fields or global variables, singletons are created once at application startup inside `Application.main()` and injected into dependent classes via primary constructors:
 
@@ -108,7 +154,7 @@ class Application {
 
 ---
 
-## 6. Concurrency (`async`, `await`, `Channel<T>`)
+## 7. Concurrency (`async`, `await`, `Channel<T>`)
 
 Concurrency in Talas executes instance methods asynchronously using `async`, non-blocking returns via `await`, and channel messaging via `Channel<T>`:
 
@@ -149,7 +195,7 @@ class Application {
 
 ---
 
-## 7. Composition Over Inheritance (No `extends` Keyword)
+## 8. Composition Over Inheritance (No `extends` Keyword)
 
 Talas has **no class inheritance** (`extends` is prohibited). Code reuse and polymorphism are achieved through **Primary Constructor Composition & Delegation**:
 
@@ -186,7 +232,7 @@ class Application {
 
 ---
 
-## 8. All Enum Use Cases via Sum Classes
+## 9. All Enum Use Cases via Sum Classes
 
 In Talas, enumerations and tagged algebraic variants are declared using **Sum Classes** (cases defined directly inside a `class`).
 
@@ -246,7 +292,7 @@ class Application {
 
 ---
 
-## 9. Unified `for` Loop & Control Flow (`break` & `continue`)
+## 10. Unified `for` Loop & Control Flow (`break` & `continue`)
 
 Talas uses `for` as its **sole loop keyword**. There is no `while` or `do-while` keyword in the language. `break` exits the loop immediately, while `continue` skips to the next iteration.
 
@@ -294,7 +340,7 @@ class Application {
 
 ---
 
-## 10. All Pattern-Matching `switch` Use Cases
+## 11. All Pattern-Matching `switch` Use Cases
 
 In Talas, `switch` is a first-class expression and statement without fall-through:
 
@@ -345,7 +391,7 @@ class Application {
 
 ---
 
-## 11. Explicit `this` Requirement
+## 12. Explicit `this` Requirement
 
 Inside any instance method of a class, every access to an instance field or instance method **must** be explicitly qualified with `this.`.
 
@@ -359,14 +405,14 @@ class Account(long id, var decimal balance) {
 
 ---
 
-## 12. Access Control (Naming-Based Visibility)
+## 13. Access Control (Naming-Based Visibility)
 
 - **Unprefixed Identifier** (`Name`, `methodName`): **Public**.
 - **Underscore-Prefixed Identifier** (`_Name`, `_methodName`): **Package-Private / Internal**.
 
 ---
 
-## 13. Word-Based Boolean Operators & The `not` Keyword
+## 14. Word-Based Boolean Operators & The `not` Keyword
 
 Talas uses word-based logical operators: `not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`. Symbol `!` is prohibited.
 
