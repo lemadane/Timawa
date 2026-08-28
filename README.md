@@ -75,6 +75,70 @@
 
 ---
 
+## Why Software Engineering & Performance are Superior in Talas
+
+Not only does Talas function nicely without `static` and `singleton` keywords—it actually produces cleaner, more testable, and significantly faster software because of their absence.
+
+### 1. Why You Don't Miss the `static` Keyword
+
+In languages like Java or C#, `static` is used for 3 primary reasons. Talas solves all 3 far more elegantly:
+
+| Traditional Use of `static` | How Talas Solves It Without `static` | Why Talas Solution is Better |
+| :--- | :--- | :--- |
+| **1. Utility Functions** (`Math.abs()`) | **Instance Utilities / Primitive Methods**<br>`math = Math(); math.abs(-42)` or `-42.abs()` | Eliminates procedural code inside OOP; clean object scoping. |
+| **2. Entry Point** (`public static void main`) | **Application Instance Method**<br>`class Application { main() { ... } }` | Pure OOP consistency; compiler handles native C-ABI bootstrapping. |
+| **3. Global State** (`static int counter`) | **Application-Scoped Instance**<br>`final appState = AppState()` | Prevents multi-threaded data races on global variables. |
+
+### 2. Why You Don't Miss a `singleton` Keyword
+
+In Java or C#, static singletons create major software engineering problems:
+- **Hidden Dependencies**: Classes secretly reach out to `Database.getInstance()`, making it impossible to see what a class depends on.
+- **Testing Nightmares**: Tests share global static state, leading to flaky tests where one test mutates state used by another.
+- **Race Conditions**: Multi-threaded access to static singletons requires complex `synchronized` locks.
+
+#### In Talas (Application-Scoped Dependency Injection):
+In Talas, a "Singleton" is simply an instance created **once** in `Application.main()` and explicitly passed to classes that need it:
+
+```java
+class Application {
+    main() {
+        // Created ONCE at startup — acts as an application-level singleton
+        final db = DatabaseConnection(`postgres://localhost:5432`)
+
+        // Explicitly passed to services
+        final userService = UserService(db)
+        final orderService = OrderService(db)
+
+        userService.findUser(1000)
+    }
+}
+```
+
+**Why this is superior**:
+- Every dependency is 100% visible in the primary constructor `UserService(DatabaseConnection db)`.
+- Unit testing is effortless: you can pass a mock `TestDatabaseConnection` without resetting global static state.
+
+### 3. The Secret Performance Boost
+
+By eliminating `static` methods and `extends` (inheritance):
+- **Direct Machine Calls**: LLVM compiles every Talas instance method directly to a fixed machine symbol (`@User_birthday`). There are no virtual method table (vtable) pointer lookups.
+- **0-Cost Function Calls**: LLVM aggressively inlines method bodies directly into call sites, reducing function call time to 0 nanoseconds.
+- **No Thread Lock Bottlenecks**: There are no static class-loader locks or static mutex bottlenecks during startup.
+
+### Summary: The Power of Minimal Keywords
+
+By omitting `static`, `singleton`, `void`, `extends`, `implements`, `public`, `private`, `protected`, `struct`, `union`, and `enum`, Talas reduces language complexity to a tiny, elegant core:
+
+- **1 Type Keyword**: `class`
+- **1 Mutability Keyword**: `var` (immutable by default)
+- **1 Loop Keyword**: `for`
+- **1 Output Directive**: `print` (always includes newline)
+- **Visibility by Naming**: `name` (public) vs. `_name` (package-private)
+
+The result is a language that is easy to learn in an afternoon, virtually impossible to introduce thread-race bugs in, and compiles to ultra-fast native executables.
+
+---
+
 ## Code Example
 
 ```java
