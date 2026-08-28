@@ -1,6 +1,6 @@
 # Talas Compiler & Runtime Architecture
 
-This document defines the system architecture, compiler pipeline, memory management model, bootstrapping design, and host implementation language evaluation for the **Talas** programming language compiler.
+This document defines the system architecture, compiler pipeline, directory layout, memory management model, bootstrapping design, and host implementation language evaluation for the **Talas** programming language compiler.
 
 ---
 
@@ -34,11 +34,52 @@ Talas Source Code (.talas)
 
 ---
 
-## 2. Host Implementation Language Evaluation
+## 2. Project & Workspace Directory Structure
+
+The Talas workspace is structured as a multi-crate Rust project managed by Cargo, with clear architectural separation between compiler frontend, SSA IR transformation, LLVM code generation, and the native C-ABI runtime.
+
+```text
+Talas/
+├── Cargo.toml                      # Workspace root definition
+├── README.md                       # Main project README
+├── LANGUAGE_SPEC_DRAFT.md          # Baseline language specification
+├── ARCHITECTURE.md                 # Compiler & runtime architecture
+├── DECISIONS_NEEDED.md             # 40 unresolved feature resolutions
+├── MILESTONES.md                   # 14 phased milestones & roadmap
+├── IMPLEMENTATION_PLAN.md          # Master implementation plan
+├── compiler/                       # Crate: talas-compiler
+│   ├── Cargo.toml                  # Compiler crate manifest
+│   └── src/
+│       ├── main.rs                 # talas CLI driver (check, emit-ir, emit-llvm, build)
+│       ├── lib.rs                  # Compiler library exports
+│       ├── diagnostics/            # Span tracking & colorized diagnostic emitter
+│       ├── lexer/                  # Backtick string scanner & token lexer
+│       ├── parser/                 # Unified class Pratt parser & AST nodes
+│       ├── resolver/               # Scope & symbol resolution
+│       ├── types/                  # Type system representations
+│       ├── semantics/              # Explicit 'this' & immutability checker
+│       ├── ir/                     # SSA Control Flow Graph IR builder
+│       └── llvm/                   # Textual LLVM IR emitter & C-main builder
+├── runtime/                        # Crate: talas-runtime (Native C-ABI static library)
+│   ├── Cargo.toml                  # Runtime crate manifest
+│   └── src/
+│       ├── lib.rs                  # C-ABI runtime init & cleanup
+│       ├── memory.rs               # Heap allocator primitives & object headers
+│       ├── strings.rs              # UTF-16 string runtime primitives
+│       ├── io.rs                   # System I/O wrappers (@talas_print_str, etc.)
+│       ├── gc.rs                   # Precise incremental GC stubs
+│       └── collections.rs          # Runtime collection array/map representations
+└── standard-library/               # Core Talas standard library packages
+    └── prelude.talas               # Standard library prelude definitions
+```
+
+---
+
+## 3. Host Implementation Language Evaluation
 
 We evaluated **Java**, **Rust**, and **C++** as candidate implementation languages for the initial Talas compiler.
 
-### 2.1 Comparison Matrix
+### 3.1 Comparison Matrix
 
 | Evaluation Dimension | Java | Rust | C++ |
 | :--- | :--- | :--- | :--- |
@@ -48,14 +89,14 @@ We evaluated **Java**, **Rust**, and **C++** as candidate implementation languag
 | **4. Memory Safety** | High (JVM managed, GC pause overhead) | Outstanding (Compile-time borrow checker, 0-cost) | Low (Manual memory errors, dangling pointers) |
 | **5. Cross-Platform** | High (Requires JVM runtime on host) | High (Single native binary distribution) | High (Native binary distribution) |
 | **6. Testing Strategy** | High (JUnit / Spock) | Outstanding (Cargo built-in unit, integration, snapshot) | Moderate (GoogleTest / Catch2 setup) |
-| **7. Debugging Tools** | High (JDB, IntelliJ debugger) | High (GDB, LLDB, Rust-analyzer) | High (GDB, LLDB, Visual Studio) |
+| **7. Debugging Tools** | High (JDB, IntelliJ debugger) | High (GDB, LLDB, Rust-analyzer) | High (CLion, VS Code, Visual Studio) |
 | **8. IDE Tooling** | High (IntelliJ, Eclipse) | Outstanding (Rust-analyzer, VS Code) | High (CLion, VS Code, Visual Studio) |
 | **9. Maintenance** | Moderate (Refactoring AST without pattern match) | Outstanding (Enums, algebraic types, pattern matching) | Moderate (Slower refactoring, header dependencies) |
 | **10. Packaging & Dist** | Poor (Fat JARs or bundled JRE needed) | Outstanding (Single, zero-dependency static executable) | High (Single executable, build setup complex) |
 | **11. Native Integration**| Poor (JNI overhead and C-ABI glue) | Outstanding (Direct `extern "C"` ABI compatibility) | High (Direct C/C++ ABI) |
 | **12. Self-Hosting Path** | Moderate (Requires JVM bootstrap phase) | Outstanding (Clean conceptual shift to Talas typed IR) | Moderate (Requires C++ toolchain bootstrap) |
 
-### 2.2 Final Recommendation & Justification
+### 3.2 Final Recommendation & Justification
 **Recommendation**: **Rust** is selected as the implementation language for the Talas compiler.
 
 **Justification**:
@@ -65,16 +106,16 @@ We evaluated **Java**, **Rust**, and **C++** as candidate implementation languag
 
 ---
 
-## 3. Pure Object-Oriented Bootstrapping Model
+## 4. Pure Object-Oriented Bootstrapping Model
 
 Talas prohibits free functions, static methods, and package-level functions. The entire system bootstraps strictly through class instantiations and instance method invocations.
 
-### 3.1 Application Entry Point
-The application entry point is defined as a public `main()` method on a class named `Application`:
+### 4.1 Application Entry Point
+The application entry point is defined as a method named `main()` (with implicit void return type, as there is no `void` keyword in Talas) on a class named `Application`:
 
 ```java
 class Application {
-    void main() {
+    main() {
         final service = UserService()
         service.run()
     }
@@ -95,30 +136,27 @@ entry:
 }
 ```
 
-### 3.2 Standard Library & Console I/O
-Since free functions are prohibited, standard I/O is exposed via standard class instances:
+### 4.2 Built-in `print` Directive
+Talas provides `print(...)` as the sole built-in output directive (always appends a newline, equivalent to Java's `System.out.println` or Python's `print()`). There is no separate `println` keyword in Talas.
 
 ```java
-class Console {
-    void print(string message) {
-        this._write(message)
-    }
-
-    void println(string message) {
-        this._write(`${message}\n`)
-    }
-
-    void _write(string text) {
-        // Invokes C-ABI intrinsic @talas_io_write
+class Application {
+    main() {
+        final user = User(1000, `Lem`, 35)
+        print(`Hello, ${user.name()}!`) // Built-in print directive (always includes newline)
     }
 }
 ```
 
-System intrinsics are wired directly to native runtime static library symbols (`talas_runtime.a`) through compiler-known class wrappers.
+System intrinsics for `print` are wired directly to native runtime static library symbols (`talas_runtime.a`):
+- `talas_print_str(i8*)`
+- `talas_print_i64(i64)`
+- `talas_print_f64(double)`
+- `talas_print_bool(i1)`
 
 ---
 
-## 4. Memory Management & Garbage Collector Architecture
+## 5. Memory Management & Garbage Collector Architecture
 
 Talas uses a precise, garbage-collected runtime.
 
@@ -129,7 +167,7 @@ Talas uses a precise, garbage-collected runtime.
              └──► Large Objects (Page-aligned direct mmap allocations)
 ```
 
-### 4.1 Object Layout Header
+### 5.1 Object Layout Header
 Every Talas object allocated on the heap begins with a 16-byte object header:
 
 ```text
@@ -140,14 +178,14 @@ Every Talas object allocated on the heap begins with a 16-byte object header:
 └───────────────────┴───────────────────┴───────────────────┴───────────────────┘
 ```
 
-### 4.2 Incremental GC Strategy
+### 5.2 Incremental GC Strategy
 - **Phase 1 (MVP)**: Stop-the-world, mark-and-sweep collector using shadow stacks or LLVM `statepoint` / `gc.root` intrinsics.
 - **Phase 2 (Production)**: Tri-color generational collector with thread-local allocation buffers (TLABs) and read/write barriers.
 - **Stack Allocation Optimization**: Escape analysis pass in Talas IR identifies non-escaping objects and replaces heap allocation with stack `alloca`.
 
 ---
 
-## 5. Custom Typed Talas IR Design
+## 6. Custom Typed Talas IR Design
 
 Before emitting LLVM IR, the compiler translates the Typed AST into a high-level Control Flow Graph (CFG) Intermediate Representation in SSA form.
 
@@ -170,6 +208,7 @@ pub enum IrInstruction {
     Store { val: IrOperand, ptr: Register },
     Binary { dest: Register, op: BinaryOp, left: IrOperand, right: IrOperand, ty: Type },
     CallMethod { dest: Option<Register>, receiver: IrOperand, method: String, args: Vec<IrOperand> },
+    CallRuntime { dest: Option<Register>, symbol: String, args: Vec<IrOperand>, ret_ty: Type },
     Branch { cond: IrOperand, then_block: BlockId, else_block: BlockId },
     Jump { target: BlockId },
     Return { val: Option<IrOperand> },

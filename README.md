@@ -116,45 +116,6 @@ class Application {
 
 ---
 
-## Project Structure
-
-```text
-Talas/
-├── Cargo.toml                      # Workspace config
-├── README.md                       # Main project README
-├── LANGUAGE_SPEC_DRAFT.md          # Baseline language specification
-├── ARCHITECTURE.md                 # Compiler & runtime architecture
-├── DECISIONS_NEEDED.md             # 40 unresolved feature resolutions
-├── MILESTONES.md                   # 14 phased milestones & roadmap
-├── IMPLEMENTATION_PLAN.md          # Master implementation plan
-├── compiler/                       # Crate: talas-compiler
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs                 # talas CLI driver
-│       ├── lib.rs                  # Compiler library
-│       ├── diagnostics/            # Diagnostic reporting & span tracking
-│       ├── lexer/                  # Backtick string & token scanner
-│       ├── parser/                 # Unified class Pratt parser
-│       ├── resolver/               # Scope & symbol resolver
-│       ├── types/                  # Type representations
-│       ├── semantics/              # Explicit 'this' & immutability checker
-│       ├── ir/                     # SSA CFG IR builder
-│       └── llvm/                   # Textual LLVM IR emitter & C-main builder
-├── runtime/                        # Crate: talas-runtime (Native C-ABI static library)
-│   ├── Cargo.toml
-│   └── src/
-│       ├── lib.rs                  # Runtime init & cleanup
-│       ├── memory.rs               # Allocator primitives
-│       ├── strings.rs              # UTF-16 string runtime
-│       ├── io.rs                   # System I/O wrappers
-│       ├── gc.rs                   # GC stubs
-│       └── collections.rs          # Runtime collection headers
-└── standard-library/
-    └── prelude.talas
-```
-
----
-
 ## Quick Start (Ubuntu / Linux)
 
 ### 1. Prerequisites
@@ -193,6 +154,13 @@ talas emit-llvm app.talas app.ll
 clang app.ll -L target/release -ltalas_runtime -o app
 ./app
 ```
+
+---
+
+## Architecture & Project Structure
+
+For detailed compiler pipeline design, module layout, object layout headers, memory management, and compiler architecture, see:
+- [Compiler & Workspace Architecture (`ARCHITECTURE.md`)](ARCHITECTURE.md#2-project--workspace-directory-structure)
 
 ---
 
