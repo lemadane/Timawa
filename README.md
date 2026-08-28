@@ -623,12 +623,12 @@ sudo cp target/release/talas-compiler /usr/local/bin/talas
 # Check source code for syntax and semantic errors
 talas check app.talas
 
-# Emit textual LLVM IR (.ll)
-talas emit-llvm app.talas app.ll
+# Fast compile & run immediately
+talas run app.talas
 
-# Compile to native executable
-clang app.ll -L target/release -ltalas_runtime -o app
-./app
+# Compile standalone release executable
+talas build --release app.talas -o my_app
+./my_app
 ```
 
 ---
