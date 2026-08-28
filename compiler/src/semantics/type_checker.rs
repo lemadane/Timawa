@@ -166,16 +166,32 @@ impl TypeChecker {
                     self.symbol_table.pop_scope();
                 }
             }
-            StmtKind::For { condition_or_iterable, body, .. } => {
+            StmtKind::For { loop_var, index_var, condition_or_iterable, body } => {
+                self.symbol_table.push_scope();
+                if let Some(lvar) = loop_var {
+                    self.symbol_table.insert(Symbol {
+                        name: lvar.clone(),
+                        ty: Type::Int,
+                        is_mutable: false,
+                    });
+                }
+                if let Some(ivar) = index_var {
+                    self.symbol_table.insert(Symbol {
+                        name: ivar.clone(),
+                        ty: Type::Int,
+                        is_mutable: false,
+                    });
+                }
                 if let Some(cond) = condition_or_iterable {
                     self.check_expr(cls, cond);
                 }
-                self.symbol_table.push_scope();
                 for s in body {
                     self.check_stmt(cls, s);
                 }
                 self.symbol_table.pop_scope();
             }
+            StmtKind::Break => {}
+            StmtKind::Continue => {}
             StmtKind::Return(expr_opt) => {
                 if let Some(e) = expr_opt {
                     self.check_expr(cls, e);

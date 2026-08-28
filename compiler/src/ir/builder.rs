@@ -318,6 +318,8 @@ impl IrBuilder {
                 self.finish_block(body_block);
                 self.pop_var_scope();
             }
+            StmtKind::Break => {}
+            StmtKind::Continue => {}
             StmtKind::Return(expr_opt) => {
                 let val = expr_opt.as_ref().map(|e| self.build_expr(e));
                 self.emit(IrInstruction::Return { val });

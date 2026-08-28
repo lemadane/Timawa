@@ -1,0 +1,36 @@
+{
+  "name": "talas-vscode",
+  "displayName": "Talas Language Support",
+  "description": "Syntax highlighting, file recognition, and language support for the Talas programming language (.talas)",
+  "version": "0.1.0",
+  "publisher": "talas-lang",
+  "icon": "icon.png",
+  "categories": [
+    "Programming Languages"
+  ],
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "talas",
+        "aliases": [
+          "Talas",
+          "talas"
+        ],
+        "extensions": [
+          ".talas"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "talas",
+        "scopeName": "source.talas",
+        "path": "./syntaxes/talas.tmLanguage.json"
+      }
+    ]
+  }
+}

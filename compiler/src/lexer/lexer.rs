@@ -138,7 +138,15 @@ impl<'a> Lexer<'a> {
             ':' => { self.advance(); TokenKind::Colon }
             ';' => { self.advance(); TokenKind::Semicolon }
             ',' => { self.advance(); TokenKind::Comma }
-            '.' => { self.advance(); TokenKind::Dot }
+            '.' => {
+                self.advance();
+                if self.peek() == Some('.') {
+                    self.advance();
+                    TokenKind::DotDot
+                } else {
+                    TokenKind::Dot
+                }
+            }
             '(' => { self.advance(); TokenKind::OpenParen }
             ')' => { self.advance(); TokenKind::CloseParen }
             '{' => {
@@ -276,6 +284,8 @@ impl<'a> Lexer<'a> {
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
             "for" => TokenKind::For,
+            "break" => TokenKind::Break,
+            "continue" => TokenKind::Continue,
             "switch" => TokenKind::Switch,
             "case" => TokenKind::Case,
             "default" => TokenKind::Default,

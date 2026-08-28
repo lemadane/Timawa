@@ -24,10 +24,10 @@
 - **Aggressive Inlining**: LLVM inlines instance method bodies directly into caller sites.
 - **Cache Locality**: Class instance headers do not store virtual pointer (`vptr`) fields, resulting in smaller memory headers and superior CPU L1/L2/L3 cache hit rates.
 
-### 3. Unified `class` Model (No `struct`, `record`, `union`, or `enum`)
-- **Single Type Keyword (`class`)**: `class` is the sole user-defined type keyword.
+### 3. Unified `class` Model & Enums via Sum Classes (No `enum` Keyword)
+- **Single Type Keyword (`class`)**: `class` is the sole user-defined type keyword (no `enum`, `struct`, `record`, or `union`).
 - **Primary Constructor Fields**: `class User(long id, string name, var int age)` automatically generates package-private backing fields (`_id`, `_name`, `_age`) and public getter methods (`id()`, `name()`, `age()`).
-- **Sum Classes for Variants**: Discriminated unions/enums are declared via Sum Classes (`class Status { case Pending; case Approved(long id) }`).
+- **Enums via Sum Classes**: Enumerations and algebraic variants are declared using `case` clauses inside a `class` (e.g. `class Status { case Pending; case Approved(long orderId) }`).
 
 ### 4. No `void` Keyword & Implicit Void Return Types
 - **No `void` Keyword**: The `void` keyword does not exist in Talas.
@@ -57,21 +57,51 @@
 - Native `null` (never `nil`) with postfix `Type?` (`User?`).
 - Optional chaining (`?.`), null coalescing (`??`), and null-coalescing assignment (`??=`).
 
-### 11. Collections Policy (`Array<T>`, `List<T>`, `Map<K, V>`)
-- **No Interfaces Policy**: Collections are concrete generic classes provided by the standard library.
+### 11. Collections Policy & Unified `for` Loops (No `while` Keyword)
+- **`for` is the Sole Loop Keyword**: There is no `while` or `do-while` keyword in Talas.
+- **`break` & `continue`**: `break` exits the nearest loop; `continue` skips to the next iteration.
 - **`Array<T>`**: Fixed-size contiguous buffer (`Array<int>(10)`).
 - **`List<T>`**: Dynamic growable sequence (`[1, 2, 3]` literal syntax, `.add()`, `.remove()`).
 - **`Map<K, V>`**: Key-value hash map (`[1000L: `Lem`]` literal syntax, bracket lookup returns `V?`, key-value `for (k, v in map)` iteration).
 
-### 12. Concurrency (`async` / `await`)
+### 12. Pattern Matching `switch` Expressions & Statements
+- **First-Class Expressions**: `switch` can evaluate directly to a value (`final x = switch (...)`).
+- **No Fall-Through**: Cases do not fall through (no `break` required inside cases).
+- **Pattern Support**: Matches constant values, Sum Class variant payloads, type checks (`is`), guard clauses (`if`), multiple OR values, and anonymous objects.
+
+### 13. Concurrency (`async` / `await`)
 - **Instance Method Spawning**: Spawning a task executes an instance method concurrently: `async worker.process(1)`.
 - **$M:N$ Scheduler**: Maps $M$ user-space lightweight tasks onto $N$ native OS threads using growable $2\text{ KB}$ stacks.
 - **Inter-Task Channels**: Communication via typed `Channel<T>` objects.
 
-### 13. Lambdas & Method References
+### 14. Lambdas & Method References
 - **Brace Syntax**: `{ (x) -> x * 2 }`.
 - **Compiler Lowering**: Lowered to synthetic, immutable single-method closure classes.
 - **Method References**: `this.methodName` syntax for instance method callbacks.
+
+---
+
+## VS Code Extension & Syntax Highlighting
+
+Talas includes an official VS Code extension in [`editors/vscode`](editors/vscode) providing full `.talas` file recognition, syntax highlighting, bracket matching, string interpolation highlighting, and code folding.
+
+### Installation Options:
+
+#### Option 1: Quick Install (Copy Extension Directory)
+```bash
+# Linux / macOS
+cp -r editors/vscode ~/.vscode/extensions/talas-vscode
+
+# Windows (Command Prompt)
+xcopy /E /I editors\vscode %USERPROFILE%\.vscode\extensions\talas-vscode
+```
+
+#### Option 2: Build & Install `.vsix` Package
+```bash
+cd editors/vscode
+npx vsce package
+code --install-extension talas-vscode-0.1.0.vsix
+```
 
 ---
 
@@ -125,21 +155,11 @@ By eliminating `static` methods and `extends` (inheritance):
 - **0-Cost Function Calls**: LLVM aggressively inlines method bodies directly into call sites, reducing function call time to 0 nanoseconds.
 - **No Thread Lock Bottlenecks**: There are no static class-loader locks or static mutex bottlenecks during startup.
 
-### Summary: The Power of Minimal Keywords
-
-By omitting `static`, `singleton`, `void`, `extends`, `implements`, `public`, `private`, `protected`, `struct`, `union`, and `enum`, Talas reduces language complexity to a tiny, elegant core:
-
-- **1 Type Keyword**: `class`
-- **1 Mutability Keyword**: `var` (immutable by default)
-- **1 Loop Keyword**: `for`
-- **1 Output Directive**: `print` (always includes newline)
-- **Visibility by Naming**: `name` (public) vs. `_name` (package-private)
-
-The result is a language that is easy to learn in an afternoon, virtually impossible to introduce thread-race bugs in, and compiles to ultra-fast native executables.
-
 ---
 
-## Code Example
+## Code Examples
+
+### 1. Unified Classes & Methods
 
 ```java
 class User(
@@ -157,23 +177,386 @@ class User(
         return this._age
     }
 }
+```
+
+### 2. Composition Over Inheritance Use Cases
+
+Because Talas has **no `extends` keyword**, code reuse and polymorphism are achieved cleanly through **Composition & Delegation**:
+
+```java
+// Component Class 1: Engine
+class Engine(int horsepower) {
+    start() {
+        print(`Engine started (${this._horsepower} HP)`)
+    }
+}
+
+// Component Class 2: Logger
+class Logger(string prefix) {
+    info(string message) {
+        print(`[${this._prefix}] ${message}`)
+    }
+}
+
+// Use Case 1: Component Embedding & Delegation (Replaces class Inheritance)
+class Car(string model, Engine engine, Logger logger) {
+    startCar() {
+        this._logger.info(`Starting vehicle ${this._model}...`)
+        this._engine.start() // Explicit forwarding delegation
+    }
+}
+
+// Use Case 2: Behavior Injection via Primary Constructor (Strategy Pattern)
+class DataExporter(Logger logger) {
+    exportData(string data) {
+        this._logger.info(`Exporting data: ${data}`)
+    }
+}
 
 class Application {
-    // Implicit void entry point
     main() {
-        final user = User(1000, `Lem`, 35)
-        user.birthday()
+        // Instantiate reusable components
+        final logger = Logger(`APP`)
+        final v8Engine = Engine(450)
 
-        if (user.getAge() > 30) {
-            // Built-in print directive (always appends newline like Java println)
-            print(`User ${user.name()} is ${user.getAge()} years old.`)
+        // Compose components into higher-level objects
+        final mustang = Car(`Mustang GT`, v8Engine, logger)
+        mustang.startCar()
+
+        final exporter = DataExporter(logger)
+        exporter.exportData(`User Record #1000`)
+    }
+}
+```
+
+### 3. Singleton Implementation via Application-Scoped Dependency Injection
+
+Because Talas omits global static variables, singletons are created once at application startup and passed into dependent services:
+
+```java
+class DatabaseConnection(string connectionUrl) {
+    query(string sql) {
+        print(`Executing query on ${this._connectionUrl}: ${sql}`)
+    }
+}
+
+class UserService(DatabaseConnection db) {
+    findUser(long id) {
+        this._db.query(`SELECT * FROM users WHERE id = ${id}`)
+    }
+}
+
+class OrderService(DatabaseConnection db) {
+    findOrders(long userId) {
+        this._db.query(`SELECT * FROM orders WHERE user_id = ${userId}`)
+    }
+}
+
+class Application {
+    main() {
+        // Created ONCE at startup — acts as an application-level singleton
+        final dbSingleton = DatabaseConnection(`postgres://localhost:5432/main`)
+
+        // Injected into dependent service instances
+        final userService = UserService(dbSingleton)
+        final orderService = OrderService(dbSingleton)
+
+        userService.findUser(1000L)
+        orderService.findOrders(1000L)
+    }
+}
+```
+
+### 4. All Enum Use Cases via Sum Classes
+
+In Talas, enumerations are declared using **Sum Classes** (defining `case` clauses inside a `class`):
+
+```java
+// Use Case 1: Simple Unit Enumerations (No Payloads)
+class Direction {
+    case North
+    case South
+    case East
+    case West
+}
+
+// Use Case 2: Positional Payload Variants (Algebraic Data Types)
+class OrderStatus {
+    case Pending
+    case Approved(long orderId, decimal amount)
+    case Rejected(string reason)
+}
+
+// Use Case 3: Named Field Variant Payloads
+class NetworkEvent {
+    case Connected(string ip, int port)
+    case Disconnected(int code)
+    case DataReceived(string payload)
+}
+
+// Use Case 4: Enums with Instance Methods & Behavior
+class LogLevel {
+    case Debug
+    case Info
+    case Warning
+    case Error
+
+    bool isCritical() {
+        return switch (this) {
+            case Error -> true
+            default -> false
+        }
+    }
+}
+
+class Application {
+    main() {
+        // 1. Simple Unit Enum Usage
+        final dir = Direction.North
+        final dirName = switch (dir) {
+            case North -> `Heading North`
+            case South -> `Heading South`
+            case East  -> `Heading East`
+            case West  -> `Heading West`
+        }
+        print(dirName)
+
+        // 2. Destructuring Payload Variant
+        final status = OrderStatus.Approved(10042L, 250.00)
+        final statusText = switch (status) {
+            case Pending -> `Order Pending`
+            case Approved(id, amount) -> `Order #${id} Approved for \$${amount}`
+            case Rejected(reason) -> `Order Rejected: ${reason}`
+        }
+        print(statusText)
+
+        // 3. Enum Method Call
+        final level = LogLevel.Error
+        if (level.isCritical()) {
+            print(`Critical log level detected!`)
+        }
+    }
+}
+```
+
+### 5. All `switch` Control Flow Use Cases
+
+In Talas, `switch` is a first-class expression and statement supporting 6 core pattern-matching use cases (no fall-through, no `break` required inside cases):
+
+```java
+class Application {
+    main() {
+        // Case 1: Constant Value Matching
+        final statusCode = 200
+        final statusText = switch (statusCode) {
+            case 200 -> `OK`
+            case 404 -> `Not Found`
+            case 500 -> `Internal Error`
+            default -> `Unknown Code`
+        }
+        print(statusText)
+
+        // Case 2: Variant Matching with Payload Destructuring
+        final status = OrderStatus.Approved(10042L, 99.99)
+        final orderMessage = switch (status) {
+            case Pending -> `Waiting`
+            case Approved(id, amt) -> `Approved ID: ${id}`
+            case Rejected(r) -> `Rejected: ${r}`
+        }
+        print(orderMessage)
+
+        // Case 3: Type Pattern Matching ('is')
+        final Object val = `Hello World`
+        final typeDesc = switch (val) {
+            case is string -> `Text String`
+            case is int -> `32-bit Integer`
+            default -> `Other Type`
+        }
+        print(typeDesc)
+
+        // Case 4: Guard Clauses ('if' guards)
+        final score = 85
+        final grade = switch (score) {
+            case s if (s >= 90) -> `Grade A`
+            case s if (s >= 80) -> `Grade B`
+            case s if (s >= 70) -> `Grade C`
+            default -> `Grade F`
+        }
+        print(grade)
+
+        // Case 5: Multiple Value Or-Patterns (Comma-separated)
+        final day = `Saturday`
+        final isWeekend = switch (day) {
+            case `Saturday`, `Sunday` -> true
+            default -> false
+        }
+        print(`Is Weekend: ${isWeekend}`)
+
+        // Case 6: Anonymous Object Structural Matching
+        final userObj = { id: 1000, role: `Admin` }
+        final accessLevel = switch (userObj) {
+            case { role: `Admin` } -> `Full Administrative Access`
+            case { id: uid } if (uid > 0) -> `Standard User Access`
+            default -> `Guest Access`
+        }
+        print(accessLevel)
+    }
+}
+```
+
+### 6. All `for` Loop Use Cases (With `break` and `continue`)
+
+Talas uses `for` as its **sole loop keyword** (no `while` or `do-while`).
+
+```java
+class Application {
+    main() {
+        // Case 1: Infinite Loop (Replaces while(true))
+        var counter = 0
+        for {
+            counter = counter + 1
+            if (counter == 2) {
+                continue // Skip iteration
+            }
+            if (counter > 4) {
+                break // Exit loop
+            }
+            print(`Infinite loop step: ${counter}`)
         }
 
-        // Map example
-        final userMap = [1000L: user]
-        for (id, u in userMap) {
-            print(`User ID: ${id}, Name: ${u.name()}`)
+        // Case 2: Conditional Condition Loop (Replaces while(condition))
+        var remaining = 3
+        for (remaining) {
+            print(`Remaining: ${remaining}`)
+            remaining = remaining - 1
         }
+
+        // Case 3: Element Iteration Over List/Array
+        final names = [`Lem`, `Rhea`, `Alex`]
+        for (name in names) {
+            if (name == `Rhea`) {
+                continue
+            }
+            print(`Name: ${name}`)
+        }
+
+        // Case 4: Index & Item Destructuring Iteration
+        for (index, name in names) {
+            print(`${index}: ${name}`)
+        }
+
+        // Case 5: Map Key-Value Destructuring Iteration
+        final scores = [1000L: 95, 1001L: 88]
+        for (id, score in scores) {
+            print(`ID ${id} -> Score ${score}`)
+        }
+
+        // Case 6: Numeric Range Iteration
+        for (i in 0..5) {
+            if (i == 3) {
+                break
+            }
+            print(`Range index: ${i}`)
+        }
+    }
+}
+```
+
+### 7. Truthy & Falsy Control Flow with Word Booleans
+
+In Talas, conditions in `if (condition)` statements evaluate **truthiness and falsiness** without requiring explicit boolean comparisons:
+
+```java
+class Application {
+    main() {
+        final User? optionalUser = User(1000, `Lem`, 35)
+        final int attempts = 3
+        final string input = `` // Empty string (falsy)
+
+        // 1. Truthy object evaluation & flow-sensitive narrowing
+        if (optionalUser) {
+            // Inside this block, 'optionalUser' is automatically narrowed from User? to non-null User
+            print(`User loaded: ${optionalUser.name()}`)
+        }
+
+        // 2. Non-zero number (truthy) & empty string (falsy) using word booleans
+        if (attempts and not input) {
+            print(`System ready: ${attempts} attempts remaining and no pending input.`)
+        }
+    }
+}
+```
+
+### 8. Word-Based Logical Operators (`not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`)
+
+Talas uses English words for all boolean operators instead of symbols like `!`, `&&`, `||`:
+
+```java
+class Application {
+    main() {
+        final bool isReady = true
+        final bool isConnected = false
+
+        // 1. NOT operator
+        if (not isConnected) {
+            print(`System is currently disconnected`)
+        }
+
+        // 2. AND & NAND operators
+        final bool bothActive = isReady and isConnected     // false
+        final bool notBothActive = isReady nand isConnected // true
+
+        // 3. OR & NOR operators
+        final bool eitherActive = isReady or isConnected    // true
+        final bool neitherActive = isReady nor isConnected   // false
+
+        // 4. XOR (Exclusive OR) & XNOR (Equivalence) operators
+        final bool exclusiveOne = isReady xor isConnected   // true (exactly one is true)
+        final bool bothMatch = isReady xnor isConnected     // false (they differ)
+
+        print(`bothActive: ${bothActive}`)
+        print(`eitherActive: ${eitherActive}`)
+        print(`exclusiveOne: ${exclusiveOne}`)
+    }
+}
+```
+
+### 9. Concurrency with `async`, `await`, and `Channel<T>`
+
+In Talas, lightweight tasks are spawned on instance methods using the `async` keyword and awaited with `await`. Tasks communicate using typed `Channel<T>` instances:
+
+```java
+class UserRepository {
+    User findUser(long id) {
+        // Simulates database query
+        return User(id, `Lem`, 35)
+    }
+}
+
+class OrderProcessor {
+    processOrders(Channel<string> channel) {
+        channel.send(`Order #10042 Processed`)
+    }
+}
+
+class Application {
+    main() {
+        final repo = UserRepository()
+        final processor = OrderProcessor()
+        final channel = Channel<string>(10)
+
+        // 1. Spawning asynchronous instance method task (returns Task<User>)
+        final Task<User> userTask = async repo.findUser(1000L)
+
+        // 2. Spawning concurrent task with channels
+        async processor.processOrders(channel)
+
+        // 3. Non-blocking await
+        final user = await userTask
+        print(`Loaded user: ${user.name()}`)
+
+        final orderResult = await channel.receive()
+        print(`Channel message: ${orderResult}`)
     }
 }
 ```

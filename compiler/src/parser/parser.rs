@@ -13,6 +13,7 @@ enum Precedence {
     And,            // and, nand
     Equality,       // ==, !=, is, is not
     Comparison,     // <, <=, >, >=
+    Range,          // ..
     Term,           // +, -
     Factor,         // *, /, %
     Unary,          // not, -
@@ -33,6 +34,7 @@ impl Precedence {
             | TokenKind::LessEqual
             | TokenKind::Greater
             | TokenKind::GreaterEqual => Precedence::Comparison,
+            TokenKind::DotDot => Precedence::Range,
             TokenKind::Plus | TokenKind::Minus => Precedence::Term,
             TokenKind::Star | TokenKind::Slash | TokenKind::Percent => Precedence::Factor,
             TokenKind::OpenParen | TokenKind::Dot | TokenKind::QuestionDot => Precedence::Call,
@@ -446,10 +448,32 @@ impl<'a> Parser<'a> {
             TokenKind::Final | TokenKind::Var => self.parse_local_decl(),
             TokenKind::If => self.parse_if_stmt(),
             TokenKind::For => self.parse_for_stmt(),
+            TokenKind::Break => self.parse_break_stmt(),
+            TokenKind::Continue => self.parse_continue_stmt(),
             TokenKind::Return => self.parse_return_stmt(),
             TokenKind::Yield => self.parse_yield_stmt(),
             _ => self.parse_expr_or_typed_decl_stmt(),
         }
+    }
+
+    fn parse_break_stmt(&mut self) -> Result<Stmt, ()> {
+        let start_span = self.current_token.span;
+        self.expect(&TokenKind::Break, "break")?;
+        self.match_token(&TokenKind::Semicolon);
+        Ok(Stmt {
+            kind: StmtKind::Break,
+            span: start_span,
+        })
+    }
+
+    fn parse_continue_stmt(&mut self) -> Result<Stmt, ()> {
+        let start_span = self.current_token.span;
+        self.expect(&TokenKind::Continue, "continue")?;
+        self.match_token(&TokenKind::Semicolon);
+        Ok(Stmt {
+            kind: StmtKind::Continue,
+            span: start_span,
+        })
     }
 
     fn parse_local_decl(&mut self) -> Result<Stmt, ()> {
@@ -545,9 +569,36 @@ impl<'a> Parser<'a> {
         let start_span = self.current_token.span;
         self.expect(&TokenKind::For, "for")?;
 
+        let mut loop_var = None;
+        let mut index_var = None;
         let mut condition_or_iterable = None;
+
         if self.match_token(&TokenKind::OpenParen) {
-            condition_or_iterable = Some(self.parse_expr(Precedence::None)?);
+            // Check for iteration: (item in list) or (index, item in list)
+            if let TokenKind::Identifier(var1) = &self.current_token.kind {
+                let var1_name = var1.clone();
+                if self.peek_token.kind == TokenKind::In {
+                    self.advance(); // consume var1
+                    self.advance(); // consume 'in'
+                    loop_var = Some(var1_name);
+                    condition_or_iterable = Some(self.parse_expr(Precedence::None)?);
+                } else if self.peek_token.kind == TokenKind::Comma {
+                    self.advance(); // consume var1
+                    self.advance(); // consume ','
+                    if let TokenKind::Identifier(var2) = &self.current_token.kind {
+                        let var2_name = var2.clone();
+                        self.advance(); // consume var2
+                        self.expect(&TokenKind::In, "in")?;
+                        index_var = Some(var1_name);
+                        loop_var = Some(var2_name);
+                        condition_or_iterable = Some(self.parse_expr(Precedence::None)?);
+                    }
+                } else {
+                    condition_or_iterable = Some(self.parse_expr(Precedence::None)?);
+                }
+            } else {
+                condition_or_iterable = Some(self.parse_expr(Precedence::None)?);
+            }
             self.expect(&TokenKind::CloseParen, ")")?;
         }
 
@@ -560,8 +611,8 @@ impl<'a> Parser<'a> {
 
         Ok(Stmt {
             kind: StmtKind::For {
-                loop_var: None,
-                index_var: None,
+                loop_var,
+                index_var,
                 condition_or_iterable,
                 body,
             },
@@ -894,6 +945,7 @@ impl<'a> Parser<'a> {
                     TokenKind::Xor => BinaryOp::Xor,
                     TokenKind::Xnor => BinaryOp::Xnor,
                     TokenKind::QuestionQuestion => BinaryOp::NullCoalescing,
+                    TokenKind::DotDot => BinaryOp::Range,
                     _ => unreachable!(),
                 };
                 let span = Span::combine(left.span, right.span);

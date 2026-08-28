@@ -78,7 +78,274 @@ class User(
 
 ---
 
-## 5. Explicit `this` Requirement
+## 5. Singletons via Application-Scoped Dependency Injection
+
+Because Talas has no static fields or global variables, singletons are created once at application startup inside `Application.main()` and injected into dependent classes via primary constructors:
+
+```java
+class DatabaseConnection(string url) {
+    query(string sql) {
+        print(`Querying ${this._url}: ${sql}`)
+    }
+}
+
+class UserService(DatabaseConnection db) {
+    findUser(long id) {
+        this._db.query(`SELECT * FROM users WHERE id = ${id}`)
+    }
+}
+
+class Application {
+    main() {
+        // Created ONCE at startup — acts as an application-level singleton
+        final db = DatabaseConnection(`postgres://localhost:5432`)
+
+        final userService = UserService(db)
+        userService.findUser(1000L)
+    }
+}
+```
+
+---
+
+## 6. Concurrency (`async`, `await`, `Channel<T>`)
+
+Concurrency in Talas executes instance methods asynchronously using `async`, non-blocking returns via `await`, and channel messaging via `Channel<T>`:
+
+```java
+class UserRepository {
+    User findUser(long id) {
+        return User(id, `Lem`, 35)
+    }
+}
+
+class OrderProcessor {
+    processOrders(Channel<string> channel) {
+        channel.send(`Order #10042 Processed`)
+    }
+}
+
+class Application {
+    main() {
+        final repo = UserRepository()
+        final processor = OrderProcessor()
+        final channel = Channel<string>(10)
+
+        // 1. Async task execution (returns Task<User>)
+        final Task<User> userTask = async repo.findUser(1000L)
+
+        // 2. Channel task execution
+        async processor.processOrders(channel)
+
+        // 3. Non-blocking await
+        final user = await userTask
+        print(`Loaded user: ${user.name()}`)
+
+        final result = await channel.receive()
+        print(`Channel result: ${result}`)
+    }
+}
+```
+
+---
+
+## 7. Composition Over Inheritance (No `extends` Keyword)
+
+Talas has **no class inheritance** (`extends` is prohibited). Code reuse and polymorphism are achieved through **Primary Constructor Composition & Delegation**:
+
+```java
+class Engine(int horsepower) {
+    start() {
+        print(`Engine started (${this._horsepower} HP)`)
+    }
+}
+
+class Logger(string prefix) {
+    info(string message) {
+        print(`[${this._prefix}] ${message}`)
+    }
+}
+
+// Composition via Primary Constructor fields
+class Car(string model, Engine engine, Logger logger) {
+    startCar() {
+        this._logger.info(`Starting vehicle ${this._model}...`)
+        this._engine.start() // Delegation forwarding
+    }
+}
+
+class Application {
+    main() {
+        final logger = Logger(`APP`)
+        final engine = Engine(400)
+        final car = Car(`Mustang`, engine, logger)
+        car.startCar()
+    }
+}
+```
+
+---
+
+## 8. All Enum Use Cases via Sum Classes
+
+In Talas, enumerations and tagged algebraic variants are declared using **Sum Classes** (cases defined directly inside a `class`).
+
+```java
+// Use Case 1: Simple Unit Enumeration
+class Direction {
+    case North
+    case South
+    case East
+    case West
+}
+
+// Use Case 2: Positional Payload Variant
+class OrderStatus {
+    case Pending
+    case Approved(long orderId, decimal amount)
+    case Rejected(string reason)
+}
+
+// Use Case 3: Named Field Payload Variant
+class NetworkEvent {
+    case Connected(string ip, int port)
+    case Disconnected(int code)
+    case DataReceived(string payload)
+}
+
+// Use Case 4: Enum Methods & Behavior
+class LogLevel {
+    case Debug
+    case Info
+    case Warning
+    case Error
+
+    bool isCritical() {
+        return switch (this) {
+            case Error -> true
+            default -> false
+        }
+    }
+}
+
+class Application {
+    main() {
+        final status = OrderStatus.Approved(10042L, 199.99)
+
+        // Pattern matching via switch (exhaustive compile-time check)
+        final message = switch (status) {
+            case Pending -> `Order is waiting for approval`
+            case Approved(orderId, amount) -> `Order #${orderId} approved for \$${amount}!`
+            case Rejected(reason) -> `Order rejected: ${reason}`
+        }
+
+        print(message)
+    }
+}
+```
+
+---
+
+## 9. Unified `for` Loop & Control Flow (`break` & `continue`)
+
+Talas uses `for` as its **sole loop keyword**. There is no `while` or `do-while` keyword in the language. `break` exits the loop immediately, while `continue` skips to the next iteration.
+
+```java
+class Application {
+    main() {
+        // 1. Infinite Loop (Replaces while(true))
+        var counter = 0
+        for {
+            counter = counter + 1
+            if (counter == 2) { continue }
+            if (counter > 4) { break }
+        }
+
+        // 2. Conditional Condition Loop (Replaces while(condition))
+        var remaining = 3
+        for (remaining) {
+            remaining = remaining - 1
+        }
+
+        // 3. Collection Element Iteration
+        final names = [`Lem`, `Rhea`, `Alex`]
+        for (name in names) {
+            print(`Name: ${name}`)
+        }
+
+        // 4. Index & Item Destructuring Iteration
+        for (index, name in names) {
+            print(`${index}: ${name}`)
+        }
+
+        // 5. Map Key-Value Destructuring Iteration
+        final userScores = [1000L: 95, 1001L: 88]
+        for (id, score in userScores) {
+            print(`ID ${id} -> Score ${score}`)
+        }
+
+        // 6. Numeric Range Iteration
+        for (i in 0..5) {
+            print(`Index: ${i}`)
+        }
+    }
+}
+```
+
+---
+
+## 10. All Pattern-Matching `switch` Use Cases
+
+In Talas, `switch` is a first-class expression and statement without fall-through:
+
+```java
+class Application {
+    main() {
+        // 1. Constant Value Matching
+        final statusText = switch (200) {
+            case 200 -> `OK`
+            default -> `Unknown`
+        }
+
+        // 2. Variant Matching with Payload Destructuring
+        final orderMessage = switch (OrderStatus.Approved(10042L, 99.99)) {
+            case Pending -> `Waiting`
+            case Approved(id, amt) -> `Approved ID: ${id}`
+            case Rejected(r) -> `Rejected: ${r}`
+        }
+
+        // 3. Type Pattern Matching ('is')
+        final Object val = `Hello`
+        final typeDesc = switch (val) {
+            case is string -> `String`
+            default -> `Other`
+        }
+
+        // 4. Guard Clauses ('if' guards)
+        final grade = switch (85) {
+            case s if (s >= 90) -> `Grade A`
+            case s if (s >= 80) -> `Grade B`
+            default -> `Grade F`
+        }
+
+        // 5. Multiple Value Or-Patterns
+        final isWeekend = switch (`Saturday`) {
+            case `Saturday`, `Sunday` -> true
+            default -> false
+        }
+
+        // 6. Anonymous Object Structural Matching
+        final accessLevel = switch ({ id: 1000, role: `Admin` }) {
+            case { role: `Admin` } -> `Admin Access`
+            default -> `Guest Access`
+        }
+    }
+}
+```
+
+---
+
+## 11. Explicit `this` Requirement
 
 Inside any instance method of a class, every access to an instance field or instance method **must** be explicitly qualified with `this.`.
 
@@ -92,15 +359,45 @@ class Account(long id, var decimal balance) {
 
 ---
 
-## 6. Access Control (Naming-Based Visibility)
+## 12. Access Control (Naming-Based Visibility)
 
 - **Unprefixed Identifier** (`Name`, `methodName`): **Public**.
 - **Underscore-Prefixed Identifier** (`_Name`, `_methodName`): **Package-Private / Internal**.
 
 ---
 
-## 7. Word-Based Boolean Operators & Truthiness
+## 13. Word-Based Boolean Operators & Truthiness
 
 Talas uses word-based logical operators: `not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`.
 
 Falsy values: `false`, `null`, `0`, `0.0`, `-0.0`, `` ``. All other values are truthy.
+
+```java
+class Application {
+    main() {
+        final bool isReady = true
+        final bool isConnected = false
+
+        // 1. NOT operator
+        if (not isConnected) {
+            print(`System is disconnected`)
+        }
+
+        // 2. AND & NAND operators
+        final bool bothActive = isReady and isConnected     // false
+        final bool notBothActive = isReady nand isConnected // true
+
+        // 3. OR & NOR operators
+        final bool eitherActive = isReady or isConnected    // true
+        final bool neitherActive = isReady nor isConnected   // false
+
+        // 4. XOR & XNOR operators
+        final bool exclusiveOne = isReady xor isConnected   // true (exactly one is true)
+        final bool bothMatch = isReady xnor isConnected     // false (they differ)
+
+        print(`bothActive: ${bothActive}`)
+        print(`eitherActive: ${eitherActive}`)
+        print(`exclusiveOne: ${exclusiveOne}`)
+    }
+}
+```

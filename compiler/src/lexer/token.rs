@@ -9,6 +9,8 @@ pub enum TokenKind {
     If,
     Else,
     For,
+    Break,
+    Continue,
     Switch,
     Case,
     Default,
@@ -72,6 +74,7 @@ pub enum TokenKind {
     Semicolon,
     Comma,
     Dot,
+    DotDot,                // ..
     OpenParen,
     CloseParen,
     OpenBrace,

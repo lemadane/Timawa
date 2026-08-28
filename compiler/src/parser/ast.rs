@@ -92,6 +92,7 @@ pub enum BinaryOp {
     Xor,
     Xnor,
     NullCoalescing,
+    Range, // ..
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -196,6 +197,8 @@ pub enum StmtKind {
         condition_or_iterable: Option<Expr>,
         body: Vec<Stmt>,
     },
+    Break,
+    Continue,
     Return(Option<Expr>),
     Yield(Expr),
 }
