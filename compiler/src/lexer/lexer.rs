@@ -241,6 +241,9 @@ impl<'a> Lexer<'a> {
             } else if ch == '.' && !is_decimal && self.peek_next().map_or(false, |c| c.is_ascii_digit()) {
                 is_decimal = true;
                 self.advance();
+            } else if (ch == 'L' || ch == 'l') && !is_decimal {
+                self.advance();
+                break;
             } else {
                 break;
             }
@@ -248,7 +251,7 @@ impl<'a> Lexer<'a> {
 
         let end_idx = self.current_char.map(|(i, _)| i).unwrap_or(self.source.len());
         let raw_num_str = &self.source[start_idx..end_idx];
-        let cleaned_num_str = raw_num_str.replace('_', "");
+        let cleaned_num_str = raw_num_str.replace('_', "").trim_end_matches(['L', 'l']).to_string();
 
         if is_decimal {
             match cleaned_num_str.parse::<f64>() {

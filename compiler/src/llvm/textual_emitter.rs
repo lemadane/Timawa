@@ -1,7 +1,7 @@
 use crate::ir::nodes::*;
 use crate::parser::BinaryOp;
 use crate::types::Type;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub struct TextualLlvmEmitter {
     output: String,
@@ -34,7 +34,9 @@ impl TextualLlvmEmitter {
         self.output.push_str("declare void @talas_print_f64(double)\n");
         self.output.push_str("declare void @talas_print_bool(i1)\n\n");
 
-        // Object layouts
+        let mut declared_types: HashSet<String> = ir_program.classes.iter().map(|c| c.name.clone()).collect();
+
+        // Object layouts for concrete classes
         for cls in &ir_program.classes {
             let field_types = cls
                 .fields
@@ -43,6 +45,18 @@ impl TextualLlvmEmitter {
                 .collect::<Vec<_>>()
                 .join(", ");
             self.output.push_str(&format!("%{} = type {{ {} }}\n", cls.name, field_types));
+        }
+
+        // Object layouts for abstract trait types referenced in parameters/receivers
+        for func in &ir_program.functions {
+            for (_, ty) in &func.params {
+                if let Type::Class { name } = ty {
+                    if !declared_types.contains(name) {
+                        self.output.push_str(&format!("%{} = type {{ }}\n", name));
+                        declared_types.insert(name.clone());
+                    }
+                }
+            }
         }
         self.output.push('\n');
 
@@ -178,20 +192,37 @@ impl TextualLlvmEmitter {
             IrInstruction::InstantiateClass { dest, class_name: _, .. } => {
                 format!("%{} = call i8* @talas_alloc(i64 32, i64 8)", dest.0)
             }
-            IrInstruction::CallMethod { dest, class_name, method_name, receiver, args: _, ret_ty } => {
+            IrInstruction::CallMethod { dest, class_name, method_name, receiver, args, ret_ty } => {
                 let fn_symbol = format!("{}_{}", class_name, method_name);
                 let ret_ty_str = self.type_to_llvm(ret_ty);
                 let rx_str = self.emit_operand(receiver);
-                if let Some(r) = dest {
-                    format!("%{} = call {} @{}({} {})", r.0, ret_ty_str, fn_symbol, self.type_to_llvm(&receiver.get_type()), rx_str)
+                let rx_ty_str = self.type_to_llvm(&receiver.get_type());
+
+                let formatted_args = args
+                    .iter()
+                    .map(|a| format!("{} {}", self.type_to_llvm(&a.get_type()), self.emit_operand(a)))
+                    .collect::<Vec<_>>();
+
+                let all_args = if formatted_args.is_empty() {
+                    format!("{} {}", rx_ty_str, rx_str)
                 } else {
-                    format!("call {} @{}({} {})", ret_ty_str, fn_symbol, self.type_to_llvm(&receiver.get_type()), rx_str)
+                    format!("{} {}, {}", rx_ty_str, rx_str, formatted_args.join(", "))
+                };
+
+                if ret_ty == &Type::Void || ret_ty_str == "void" {
+                    format!("call void @{}({})", fn_symbol, all_args)
+                } else if let Some(r) = dest {
+                    format!("%{} = call {} @{}({})", r.0, ret_ty_str, fn_symbol, all_args)
+                } else {
+                    format!("call {} @{}({})", ret_ty_str, fn_symbol, all_args)
                 }
             }
             IrInstruction::CallRuntime { dest, symbol, args, ret_ty } => {
                 let ret_ty_str = self.type_to_llvm(ret_ty);
                 let args_str = args.iter().map(|a| format!("{} {}", self.type_to_llvm(&a.get_type()), self.emit_operand(a))).collect::<Vec<_>>().join(", ");
-                if let Some(r) = dest {
+                if ret_ty == &Type::Void || ret_ty_str == "void" {
+                    format!("call void @{}({})", symbol, args_str)
+                } else if let Some(r) = dest {
                     format!("%{} = call {} @{}({})", r.0, ret_ty_str, symbol, args_str)
                 } else {
                     format!("call {} @{}({})", ret_ty_str, symbol, args_str)
