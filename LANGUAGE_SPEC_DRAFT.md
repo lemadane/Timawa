@@ -366,38 +366,33 @@ class Account(long id, var decimal balance) {
 
 ---
 
-## 13. Word-Based Boolean Operators & Truthiness
+## 13. Word-Based Boolean Operators & The `not` Keyword
 
-Talas uses word-based logical operators: `not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`.
+Talas uses word-based logical operators: `not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`. Symbol `!` is prohibited.
 
 Falsy values: `false`, `null`, `0`, `0.0`, `-0.0`, `` ``. All other values are truthy.
 
 ```java
 class Application {
     main() {
-        final bool isReady = true
         final bool isConnected = false
+        final string input = ``
+        final Object data = 42
 
-        // 1. NOT operator
+        // 1. Logical negation of boolean
         if (not isConnected) {
-            print(`System is disconnected`)
+            print(`System disconnected`)
         }
 
-        // 2. AND & NAND operators
-        final bool bothActive = isReady and isConnected     // false
-        final bool notBothActive = isReady nand isConnected // true
+        // 2. Falsiness check
+        if (not input) {
+            print(`No input provided`)
+        }
 
-        // 3. OR & NOR operators
-        final bool eitherActive = isReady or isConnected    // true
-        final bool neitherActive = isReady nor isConnected   // false
-
-        // 4. XOR & XNOR operators
-        final bool exclusiveOne = isReady xor isConnected   // true (exactly one is true)
-        final bool bothMatch = isReady xnor isConnected     // false (they differ)
-
-        print(`bothActive: ${bothActive}`)
-        print(`eitherActive: ${eitherActive}`)
-        print(`exclusiveOne: ${exclusiveOne}`)
+        // 3. Negated type check ('is not')
+        if (data is not string) {
+            print(`Data is not a text string`)
+        }
     }
 }
 ```

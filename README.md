@@ -50,8 +50,8 @@
   - **Truthy**: `true`, non-zero numbers, non-empty strings, class instances, anonymous objects.
 - **Flow-Sensitive Narrowing**: Evaluating a nullable `User?` in an `if (user)` block automatically narrows `user` to non-null `User`.
 
-### 9. Word-Based Boolean Operators
-- Logical operators use English words: `not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`. Output is always primitive `bool`.
+### 9. Word-Based Boolean Operators & `not` Keyword
+- Logical operators use English words: `not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`. The `!` symbol is prohibited (replaced by `not`).
 
 ### 10. First-Class Nullability & Optional Operators
 - Native `null` (never `nil`) with postfix `Type?` (`User?`).
@@ -179,7 +179,36 @@ class User(
 }
 ```
 
-### 2. Composition Over Inheritance Use Cases
+### 2. The `not` Keyword Use Cases
+
+In Talas, the exclamation symbol `!` is not a valid operator. Logical negation and type checks use the `not` keyword:
+
+```java
+class Application {
+    main() {
+        final bool isConnected = false
+        final string input = `` // Empty string (falsy)
+        final Object data = 42
+
+        // 1. Logical negation of boolean values
+        if (not isConnected) {
+            print(`System is disconnected`) // Executes because not false is true
+        }
+
+        // 2. Truthiness negation (falsy check)
+        if (not input) {
+            print(`No input provided`) // Executes because empty string is falsy
+        }
+
+        // 3. Negated type check ('is not')
+        if (data is not string) {
+            print(`Data is not a text string`) // Executes because data is an int
+        }
+    }
+}
+```
+
+### 3. Composition Over Inheritance Use Cases
 
 Because Talas has **no `extends` keyword**, code reuse and polymorphism are achieved cleanly through **Composition & Delegation**:
 
@@ -229,7 +258,7 @@ class Application {
 }
 ```
 
-### 3. Singleton Implementation via Application-Scoped Dependency Injection
+### 4. Singleton Implementation via Application-Scoped Dependency Injection
 
 Because Talas omits global static variables, singletons are created once at application startup and passed into dependent services:
 
@@ -267,7 +296,7 @@ class Application {
 }
 ```
 
-### 4. All Enum Use Cases via Sum Classes
+### 5. All Enum Use Cases via Sum Classes
 
 In Talas, enumerations are declared using **Sum Classes** (defining `case` clauses inside a `class`):
 
@@ -339,7 +368,7 @@ class Application {
 }
 ```
 
-### 5. All `switch` Control Flow Use Cases
+### 6. All `switch` Control Flow Use Cases
 
 In Talas, `switch` is a first-class expression and statement supporting 6 core pattern-matching use cases (no fall-through, no `break` required inside cases):
 
@@ -404,7 +433,7 @@ class Application {
 }
 ```
 
-### 6. All `for` Loop Use Cases (With `break` and `continue`)
+### 7. All `for` Loop Use Cases (With `break` and `continue`)
 
 Talas uses `for` as its **sole loop keyword** (no `while` or `do-while`).
 
@@ -462,7 +491,7 @@ class Application {
 }
 ```
 
-### 7. Truthy & Falsy Control Flow with Word Booleans
+### 8. Truthy & Falsy Control Flow with Word Booleans
 
 In Talas, conditions in `if (condition)` statements evaluate **truthiness and falsiness** without requiring explicit boolean comparisons:
 
@@ -487,7 +516,7 @@ class Application {
 }
 ```
 
-### 8. Word-Based Logical Operators (`not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`)
+### 9. Word-Based Logical Operators (`not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`)
 
 Talas uses English words for all boolean operators instead of symbols like `!`, `&&`, `||`:
 
@@ -521,7 +550,7 @@ class Application {
 }
 ```
 
-### 9. Concurrency with `async`, `await`, and `Channel<T>`
+### 10. Concurrency with `async`, `await`, and `Channel<T>`
 
 In Talas, lightweight tasks are spawned on instance methods using the `async` keyword and awaited with `await`. Tasks communicate using typed `Channel<T>` instances:
 
