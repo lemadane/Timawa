@@ -1,0 +1,11 @@
+// Talas Standard Library Prelude
+
+class Console {
+    void print(string message) {
+        // Internal primitive output wrapper
+    }
+
+    void println(string message) {
+        // Internal primitive output wrapper
+    }
+}

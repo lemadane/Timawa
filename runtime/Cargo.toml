@@ -1,0 +1,10 @@
+[package]
+name = "talas-runtime"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "talas_runtime"
+crate-type = ["rlib", "staticlib", "cdylib"]
+
+[dependencies]

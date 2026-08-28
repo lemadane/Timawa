@@ -1,0 +1,9 @@
+[package]
+name = "talas-compiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+talas-runtime = { path = "../runtime" }
+
+[dev-dependencies]

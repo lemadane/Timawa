@@ -1,0 +1,27 @@
+use std::alloc::{alloc, dealloc, Layout};
+use std::ffi::c_void;
+
+#[no_mangle]
+pub extern "C" fn talas_alloc(size: usize, align: usize) -> *mut c_void {
+    if size == 0 {
+        return std::ptr::null_mut();
+    }
+    let align = if align == 0 { 8 } else { align };
+    match Layout::from_size_align(size, align) {
+        Ok(layout) => unsafe { alloc(layout) as *mut c_void },
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn talas_free(ptr: *mut c_void, size: usize, align: usize) {
+    if ptr.is_null() || size == 0 {
+        return;
+    }
+    let align = if align == 0 { 8 } else { align };
+    if let Ok(layout) = Layout::from_size_align(size, align) {
+        unsafe {
+            dealloc(ptr as *mut u8, layout);
+        }
+    }
+}
