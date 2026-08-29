@@ -6,7 +6,7 @@
 [![Compiler Status](https://img.shields.io/badge/compiler-Rust%20%2B%20LLVM-orange.svg)](ARCHITECTURE.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Talas** TALAS is a NO INHERITANCE, NO INTERFACE, pure object-oriented composition programming language designed for native performance, low memory footprint, and high safety. Positioned between GO and JAVA, TALAS combines native single-binary deployment and direct native code generation via LLVM like RUST.
+**Talas** is a NO INHERITANCE, NO INTERFACE, pure object-oriented composition programming language designed for native performance, low memory footprint, and high safety. Positioned between GO and JAVA, **Talas** combines native single-binary deployment and direct native code generation via LLVM like RUST.
 
 ---
 
