@@ -12,6 +12,7 @@ pub struct IrBuilder {
     method_return_types: HashMap<(String, String), Type>,
     class_fields: HashMap<(String, String), Type>,
     class_field_indices: HashMap<(String, String), (usize, Type)>,
+    class_decls: HashMap<String, ClassDecl>,
     loop_stack: Vec<(BlockId, BlockId)>,
     current_block_id: Option<BlockId>,
 }
@@ -27,6 +28,7 @@ impl IrBuilder {
             method_return_types: HashMap::new(),
             class_fields: HashMap::new(),
             class_field_indices: HashMap::new(),
+            class_decls: HashMap::new(),
             loop_stack: Vec::new(),
             current_block_id: None,
         }

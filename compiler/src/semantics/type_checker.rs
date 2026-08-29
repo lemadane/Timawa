@@ -129,12 +129,26 @@ impl TypeChecker {
         self.current_class = None;
     }
 
+    fn stmt_definitely_returns(&self, stmt: &Stmt) -> bool {
+        match &stmt.kind {
+            StmtKind::Return(_) | StmtKind::Yield(_) => true,
+            StmtKind::If { then_branch, else_branch, .. } => {
+                let then_returns = then_branch.iter().any(|s| self.stmt_definitely_returns(s));
+                let else_returns = else_branch
+                    .as_ref()
+                    .map_or(false, |eb| eb.iter().any(|s| self.stmt_definitely_returns(s)));
+                then_returns && else_returns
+            }
+            _ => false,
+        }
+    }
+
     fn check_method(&mut self, cls: &ClassDecl, method: &MethodDecl) {
         let return_type = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
         self.current_return_type = Some(return_type.clone());
 
         if return_type != Type::Void {
-            let has_return = method.body.iter().any(|stmt| matches!(stmt.kind, StmtKind::Return(_)));
+            let has_return = method.body.iter().any(|stmt| self.stmt_definitely_returns(stmt));
             if !has_return {
                 self.diagnostics.push(Diagnostic::error(
                     format!("Method '{}' must return a value of type '{:?}'", method.name, return_type),

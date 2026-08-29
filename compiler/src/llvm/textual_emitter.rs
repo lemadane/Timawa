@@ -196,8 +196,8 @@ impl TextualLlvmEmitter {
                     val_ty_str, val_str, val_ty_str, gep_reg
                 )
             }
-            IrInstruction::Binary { dest, op, left, right, ty } => {
-                let ty_str = self.type_to_llvm(ty);
+            IrInstruction::Binary { dest, op, left, right, operand_ty, result_ty: _ } => {
+                let ty_str = self.type_to_llvm(operand_ty);
                 let l_str = self.emit_operand(left);
                 let r_str = self.emit_operand(right);
                 match op {
@@ -229,23 +229,23 @@ impl TextualLlvmEmitter {
                         let tmp_cond = format!("tmp_nc_{}", self.string_counter);
                         self.string_counter += 1;
                         format!(
-                            "%{} = icmp ne {} {}, null\n  %{} = select i1 %{}, {} {}, {}",
-                            tmp_cond, ty_str, l_str, dest.0, tmp_cond, ty_str, l_str, r_str
+                            "%{} = icmp ne {} {}, null\n  %{} = select i1 %{}, {} {}, {} {}",
+                            tmp_cond, ty_str, l_str, dest.0, tmp_cond, ty_str, l_str, ty_str, r_str
                         )
                     }
                     _ => {
                         let op_str = match op {
-                            BinaryOp::Add => if ty == &Type::Decimal { "fadd" } else { "add" },
-                            BinaryOp::Sub => if ty == &Type::Decimal { "fsub" } else { "sub" },
-                            BinaryOp::Mul => if ty == &Type::Decimal { "fmul" } else { "mul" },
-                            BinaryOp::Div => if ty == &Type::Decimal { "fdiv" } else { "sdiv" },
+                            BinaryOp::Add => if operand_ty == &Type::Decimal { "fadd" } else { "add" },
+                            BinaryOp::Sub => if operand_ty == &Type::Decimal { "fsub" } else { "sub" },
+                            BinaryOp::Mul => if operand_ty == &Type::Decimal { "fmul" } else { "mul" },
+                            BinaryOp::Div => if operand_ty == &Type::Decimal { "fdiv" } else { "sdiv" },
                             BinaryOp::Mod => "srem",
-                            BinaryOp::Equal => if ty == &Type::Decimal { "fcmp oeq" } else { "icmp eq" },
-                            BinaryOp::NotEqual => if ty == &Type::Decimal { "fcmp one" } else { "icmp ne" },
-                            BinaryOp::Less => if ty == &Type::Decimal { "fcmp olt" } else { "icmp slt" },
-                            BinaryOp::LessEqual => if ty == &Type::Decimal { "fcmp ole" } else { "icmp sle" },
-                            BinaryOp::Greater => if ty == &Type::Decimal { "fcmp ogt" } else { "icmp sgt" },
-                            BinaryOp::GreaterEqual => if ty == &Type::Decimal { "fcmp oge" } else { "icmp sge" },
+                            BinaryOp::Equal => if operand_ty == &Type::Decimal { "fcmp oeq" } else { "icmp eq" },
+                            BinaryOp::NotEqual => if operand_ty == &Type::Decimal { "fcmp one" } else { "icmp ne" },
+                            BinaryOp::Less => if operand_ty == &Type::Decimal { "fcmp olt" } else { "icmp slt" },
+                            BinaryOp::LessEqual => if operand_ty == &Type::Decimal { "fcmp ole" } else { "icmp sle" },
+                            BinaryOp::Greater => if operand_ty == &Type::Decimal { "fcmp ogt" } else { "icmp sgt" },
+                            BinaryOp::GreaterEqual => if operand_ty == &Type::Decimal { "fcmp oge" } else { "icmp sge" },
                             BinaryOp::And => "and",
                             BinaryOp::Or => "or",
                             BinaryOp::Xor => "xor",
