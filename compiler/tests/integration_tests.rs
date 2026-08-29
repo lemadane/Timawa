@@ -93,3 +93,123 @@ fn test_talas_trait_parsing() {
     let is_valid = checker.check_program(&program);
     assert!(is_valid, "Type checking trait failed: {:?}", checker.diagnostics);
 }
+
+#[test]
+fn test_e2e_person_birthday() {
+    let source_code = r#"
+        class Person(
+            string name,
+            var int age
+        ) {
+            birthday() {
+                this._age = this._age + 1
+            }
+        }
+
+        class Application {
+            main() {
+                final person = Person(`Lem`, 35)
+                print(person.name())
+                print(person.age())
+                person.birthday()
+                print(person.age())
+            }
+        }
+    "#;
+
+    // 1. Lexing & Parsing
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty(), "Parsing failed: {:?}", parser.diagnostics);
+
+    // 2. Type Checking & Semantic Verification
+    let mut checker = TypeChecker::new();
+    let is_valid = checker.check_program(&program);
+    assert!(is_valid, "Type checking failed: {:?}", checker.diagnostics);
+
+    // 3. IR Lowering to SSA CFG
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+    assert_eq!(ir_program.classes.len(), 2);
+
+    // 4. LLVM IR Generation
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(llvm_ir.contains("%Person = type { i8*, i32 }"));
+    assert!(llvm_ir.contains("define void @Person_birthday(%Person* %v0)"));
+    assert!(llvm_ir.contains("call void @talas_print_str"));
+    assert!(llvm_ir.contains("call void @talas_print_i64"));
+    assert!(llvm_ir.contains("getelementptr inbounds %Person, %Person*"));
+    assert!(llvm_ir.contains("store i32 35"));
+    assert!(!llvm_ir.contains("void %"));
+}
+
+#[test]
+fn test_e2e_trait_polymorphism() {
+    let source_code = r#"
+        trait Printable {
+            printDetails();         // Abstract method
+
+            string getHeader() {    // Default implementation
+                return `=== PRINTABLE ITEM ===`
+            }
+        }
+
+        class User(long id, string name) {
+            printDetails() { // Concrete implementation
+                print(`User #${this._id}: ${this._name}`)
+            }
+        }
+
+        class Invoice(long id, decimal total) {
+            printDetails() { // Concrete implementation
+                print(`Invoice #${this._id}: \$${this._total}`)
+            }
+        }
+
+        class App {
+            render(Printable item) { // Accepts any Printable item
+                print(item.getHeader())
+                item.printDetails()
+            }
+
+            main() {
+                final user = User(1000L, `Lem`)
+                final invoice = Invoice(5001L, 199.99)
+
+                this.render(user)    // Calls render with a User
+                this.render(invoice) // Calls render with an Invoice
+            }
+        }
+    "#;
+
+    // 1. Lexing & Parsing
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty(), "Parsing failed: {:?}", parser.diagnostics);
+
+    // 2. Type Checking & Semantic Verification
+    let mut checker = TypeChecker::new();
+    let is_valid = checker.check_program(&program);
+    assert!(is_valid, "Type checking failed: {:?}", checker.diagnostics);
+
+    // 3. IR Lowering to SSA CFG
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+    assert_eq!(ir_program.classes.len(), 3);
+
+    // 4. LLVM IR Generation
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(llvm_ir.contains("%User = type { i64, i8* }"));
+    assert!(llvm_ir.contains("%Invoice = type { i64, double }"));
+    assert!(llvm_ir.contains("define void @App_render_User(%App*"));
+    assert!(llvm_ir.contains("define void @App_render_Invoice(%App*"));
+    assert!(llvm_ir.contains("call void @User_printDetails(%User*"));
+    assert!(llvm_ir.contains("call void @Invoice_printDetails(%Invoice*"));
+    assert!(!llvm_ir.contains("void %"));
+}

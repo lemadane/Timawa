@@ -7,6 +7,7 @@ pub struct TextualLlvmEmitter {
     output: String,
     string_constants: HashMap<String, String>,
     string_counter: usize,
+    class_map: HashMap<String, IrClass>,
 }
 
 impl TextualLlvmEmitter {
@@ -15,11 +16,13 @@ impl TextualLlvmEmitter {
             output: String::new(),
             string_constants: HashMap::new(),
             string_counter: 0,
+            class_map: HashMap::new(),
         }
     }
 
     pub fn emit_program(&mut self, ir_program: &IrProgram) -> String {
         self.output.clear();
+        self.class_map = ir_program.classes.iter().map(|c| (c.name.clone(), c.clone())).collect();
 
         // Target Data Layout
         self.output.push_str("; Target Data Layout for Talas Native Binary\n");
@@ -167,6 +170,30 @@ impl TextualLlvmEmitter {
                 let val_str = self.emit_operand(val);
                 format!("store {} {}, {}* %{}, align 8", ty_str, val_str, ty_str, ptr.0)
             }
+            IrInstruction::GetField { dest, ptr, class_name, field_index, field_ty } => {
+                let class_type = format!("%{}", class_name);
+                let field_ty_str = self.type_to_llvm(field_ty);
+                let gep_reg = format!("gep_{}_{}", ptr.0, self.string_counter);
+                self.string_counter += 1;
+                format!(
+                    "%{} = getelementptr inbounds {}, {}* %{}, i32 0, i32 {}\n  %{} = load {}, {}* %{}, align 8",
+                    gep_reg, class_type, class_type, ptr.0, field_index,
+                    dest.0, field_ty_str, field_ty_str, gep_reg
+                )
+            }
+            IrInstruction::StoreField { ptr, class_name, field_index, val } => {
+                let class_type = format!("%{}", class_name);
+                let val_ty = val.get_type();
+                let val_ty_str = self.type_to_llvm(&val_ty);
+                let val_str = self.emit_operand(val);
+                let gep_reg = format!("gep_store_{}_{}", ptr.0, self.string_counter);
+                self.string_counter += 1;
+                format!(
+                    "%{} = getelementptr inbounds {}, {}* %{}, i32 0, i32 {}\n  store {} {}, {}* %{}, align 8",
+                    gep_reg, class_type, class_type, ptr.0, field_index,
+                    val_ty_str, val_str, val_ty_str, gep_reg
+                )
+            }
             IrInstruction::Binary { dest, op, left, right, ty } => {
                 let ty_str = self.type_to_llvm(ty);
                 let l_str = self.emit_operand(left);
@@ -189,8 +216,37 @@ impl TextualLlvmEmitter {
                 };
                 format!("%{} = {} {} {}, {}", dest.0, op_str, ty_str, l_str, r_str)
             }
-            IrInstruction::InstantiateClass { dest, class_name: _, .. } => {
-                format!("%{} = call i8* @talas_alloc(i64 32, i64 8)", dest.0)
+            IrInstruction::InstantiateClass { dest, class_name, args } => {
+                let class_type = format!("%{}", class_name);
+                let bitcast_reg = format!("obj_{}_{}", dest.0, self.string_counter);
+                self.string_counter += 1;
+                let mut instrs = Vec::new();
+                instrs.push(format!("%{} = call i8* @talas_alloc(i64 32, i64 8)", dest.0));
+                instrs.push(format!("%{} = bitcast i8* %{} to {}*", bitcast_reg, dest.0, class_type));
+
+                let field_types: Vec<Type> = self
+                    .class_map
+                    .get(class_name)
+                    .map(|c| c.fields.iter().map(|(_, ty)| ty.clone()).collect())
+                    .unwrap_or_default();
+
+                for (i, arg) in args.iter().enumerate() {
+                    let field_ty = field_types.get(i).cloned().unwrap_or_else(|| arg.get_type());
+                    let field_ty_str = self.type_to_llvm(&field_ty);
+                    let gep_reg = format!("gep_inst_{}_{}", dest.0, i);
+                    let val_str = self.emit_operand(arg);
+
+                    instrs.push(format!("%{} = getelementptr inbounds {}, {}* %{}, i32 0, i32 {}", gep_reg, class_type, class_type, bitcast_reg, i));
+
+                    if field_ty == Type::Long && arg.get_type() == Type::Int {
+                        let ext_reg = format!("ext_inst_{}_{}", dest.0, i);
+                        instrs.push(format!("%{} = sext i32 {} to i64", ext_reg, val_str));
+                        instrs.push(format!("store i64 %{}, i64* %{}, align 8", ext_reg, gep_reg));
+                    } else {
+                        instrs.push(format!("store {} {}, {}* %{}, align 8", field_ty_str, val_str, field_ty_str, gep_reg));
+                    }
+                }
+                instrs.join("\n  ")
             }
             IrInstruction::CallMethod { dest, class_name, method_name, receiver, args, ret_ty } => {
                 let fn_symbol = format!("{}_{}", class_name, method_name);
@@ -219,13 +275,33 @@ impl TextualLlvmEmitter {
             }
             IrInstruction::CallRuntime { dest, symbol, args, ret_ty } => {
                 let ret_ty_str = self.type_to_llvm(ret_ty);
-                let args_str = args.iter().map(|a| format!("{} {}", self.type_to_llvm(&a.get_type()), self.emit_operand(a))).collect::<Vec<_>>().join(", ");
-                if ret_ty == &Type::Void || ret_ty_str == "void" {
+                let mut instrs = Vec::new();
+                let mut formatted_args = Vec::new();
+                for a in args {
+                    let arg_ty = a.get_type();
+                    if symbol == "talas_print_i64" && arg_ty == Type::Int {
+                        let ext_reg = format!("ext_{}", self.string_counter);
+                        self.string_counter += 1;
+                        let val_str = self.emit_operand(a);
+                        instrs.push(format!("%{} = sext i32 {} to i64", ext_reg, val_str));
+                        formatted_args.push(format!("i64 %{}", ext_reg));
+                    } else {
+                        formatted_args.push(format!("{} {}", self.type_to_llvm(&arg_ty), self.emit_operand(a)));
+                    }
+                }
+                let args_str = formatted_args.join(", ");
+                let call_str = if ret_ty == &Type::Void || ret_ty_str == "void" {
                     format!("call void @{}({})", symbol, args_str)
                 } else if let Some(r) = dest {
                     format!("%{} = call {} @{}({})", r.0, ret_ty_str, symbol, args_str)
                 } else {
                     format!("call {} @{}({})", ret_ty_str, symbol, args_str)
+                };
+                if instrs.is_empty() {
+                    call_str
+                } else {
+                    instrs.push(call_str);
+                    instrs.join("\n  ")
                 }
             }
             IrInstruction::Branch { cond, then_block, else_block } => {

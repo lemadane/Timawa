@@ -48,6 +48,8 @@ pub enum IrInstruction {
     Alloca { dest: Register, ty: Type },
     Load { dest: Register, ptr: Register, ty: Type },
     Store { val: IrOperand, ptr: Register },
+    GetField { dest: Register, ptr: Register, class_name: String, field_index: usize, field_ty: Type },
+    StoreField { ptr: Register, class_name: String, field_index: usize, val: IrOperand },
     Binary { dest: Register, op: BinaryOp, left: IrOperand, right: IrOperand, ty: Type },
     CallMethod { dest: Option<Register>, class_name: String, method_name: String, receiver: IrOperand, args: Vec<IrOperand>, ret_ty: Type },
     CallRuntime { dest: Option<Register>, symbol: String, args: Vec<IrOperand>, ret_ty: Type },

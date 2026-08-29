@@ -9,6 +9,9 @@ pub struct IrBuilder {
     current_instructions: Vec<IrInstruction>,
     blocks: Vec<BasicBlock>,
     var_pointers: Vec<HashMap<String, (Register, Type)>>,
+    method_return_types: HashMap<(String, String), Type>,
+    class_fields: HashMap<(String, String), Type>,
+    class_field_indices: HashMap<(String, String), (usize, Type)>,
 }
 
 impl IrBuilder {
@@ -19,6 +22,22 @@ impl IrBuilder {
             current_instructions: Vec::new(),
             blocks: Vec::new(),
             var_pointers: Vec::new(),
+            method_return_types: HashMap::new(),
+            class_fields: HashMap::new(),
+            class_field_indices: HashMap::new(),
+        }
+    }
+
+    fn type_spec_to_type(&self, ts: &TypeSpec) -> Type {
+        match ts {
+            TypeSpec::Int => Type::Int,
+            TypeSpec::Decimal => Type::Decimal,
+            TypeSpec::Byte => Type::Byte,
+            TypeSpec::Long => Type::Long,
+            TypeSpec::Bool => Type::Bool,
+            TypeSpec::String => Type::String,
+            TypeSpec::Class(n) => Type::Class { name: n.clone() },
+            TypeSpec::Nullable(inner) => Type::Nullable(Box::new(self.type_spec_to_type(inner))),
         }
     }
 
@@ -67,6 +86,10 @@ impl IrBuilder {
     }
 
     pub fn build_program(&mut self, program: &Program) -> IrProgram {
+        self.method_return_types.clear();
+        self.class_fields.clear();
+        self.class_field_indices.clear();
+
         let mut ir_classes = Vec::new();
         let mut ir_functions = Vec::new();
 
@@ -78,7 +101,47 @@ impl IrBuilder {
             }
         }
 
-        // 2. Build classes and traits
+        // 2. Pre-register method return types and class field types & indices
+        for item in &program.items {
+            match item {
+                Item::Class(cls) => {
+                    for (i, param) in cls.primary_params.iter().enumerate() {
+                        let field_ty = self.type_spec_to_type(&param.type_spec);
+                        self.class_fields.insert((cls.name.clone(), format!("_{}", param.name)), field_ty.clone());
+                        self.class_fields.insert((cls.name.clone(), param.name.clone()), field_ty.clone());
+                        self.class_field_indices.insert((cls.name.clone(), format!("_{}", param.name)), (i, field_ty.clone()));
+                        self.class_field_indices.insert((cls.name.clone(), param.name.clone()), (i, field_ty.clone()));
+                        self.method_return_types.insert((cls.name.clone(), param.name.clone()), field_ty);
+                    }
+                    for case in &cls.cases {
+                        self.method_return_types.insert((cls.name.clone(), case.name.clone()), Type::Class { name: cls.name.clone() });
+                    }
+                    for method in &cls.methods {
+                        let ret_ty = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
+                        self.method_return_types.insert((cls.name.clone(), method.name.clone()), ret_ty.clone());
+
+                        let has_trait_param = method.params.iter().any(|p| matches!(p.type_spec, TypeSpec::Class(_)));
+                        if has_trait_param {
+                            for target_cls in &concrete_classes {
+                                if target_cls.name != cls.name {
+                                    let spec_name = format!("{}_{}", method.name, target_cls.name);
+                                    self.method_return_types.insert((cls.name.clone(), spec_name), ret_ty.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                Item::Trait(tr) => {
+                    for method in &tr.methods {
+                        let ret_ty = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
+                        self.method_return_types.insert((tr.name.clone(), method.name.clone()), ret_ty);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // 3. Build classes and traits
         for item in &program.items {
             match item {
                 Item::Class(cls) => {
@@ -114,16 +177,7 @@ impl IrBuilder {
 
         for param in &cls.primary_params {
             let field_name = format!("_{}", param.name);
-            let field_ty = match &param.type_spec {
-                TypeSpec::Int => Type::Int,
-                TypeSpec::Decimal => Type::Decimal,
-                TypeSpec::Byte => Type::Byte,
-                TypeSpec::Long => Type::Long,
-                TypeSpec::Bool => Type::Bool,
-                TypeSpec::String => Type::String,
-                TypeSpec::Class(n) => Type::Class { name: n.clone() },
-                TypeSpec::Nullable(_) => Type::Nullable(Box::new(Type::Void)),
-            };
+            let field_ty = self.type_spec_to_type(&param.type_spec);
             fields.push((field_name, field_ty));
         }
 
@@ -134,8 +188,8 @@ impl IrBuilder {
 
         let mut functions = Vec::new();
 
-        for param in &cls.primary_params {
-            let getter_fn = self.build_getter(cls, param);
+        for (i, param) in cls.primary_params.iter().enumerate() {
+            let getter_fn = self.build_getter(cls, param, i);
             functions.push(getter_fn);
         }
 
@@ -164,7 +218,7 @@ impl IrBuilder {
         (ir_cls, functions)
     }
 
-    fn build_getter(&mut self, cls: &ClassDecl, param: &ConstructorParam) -> IrFunction {
+    fn build_getter(&mut self, cls: &ClassDecl, param: &ConstructorParam, field_index: usize) -> IrFunction {
         self.next_reg = 0;
         self.next_block = 0;
         self.blocks.clear();
@@ -175,22 +229,15 @@ impl IrBuilder {
         let receiver_reg = self.fresh_reg();
         let this_ty = Type::Class { name: cls.name.clone() };
 
-        let field_ty = match &param.type_spec {
-            TypeSpec::Int => Type::Int,
-            TypeSpec::Decimal => Type::Decimal,
-            TypeSpec::Byte => Type::Byte,
-            TypeSpec::Long => Type::Long,
-            TypeSpec::Bool => Type::Bool,
-            TypeSpec::String => Type::String,
-            TypeSpec::Class(n) => Type::Class { name: n.clone() },
-            TypeSpec::Nullable(_) => Type::Nullable(Box::new(Type::Void)),
-        };
+        let field_ty = self.type_spec_to_type(&param.type_spec);
 
         let load_reg = self.fresh_reg();
-        self.emit(IrInstruction::Load {
+        self.emit(IrInstruction::GetField {
             dest: load_reg,
             ptr: receiver_reg,
-            ty: field_ty.clone(),
+            class_name: cls.name.clone(),
+            field_index,
+            field_ty: field_ty.clone(),
         });
         self.emit(IrInstruction::Return {
             val: Some(IrOperand::Register(load_reg, field_ty.clone())),
@@ -516,11 +563,18 @@ impl IrBuilder {
                             }
                         }
 
-                        let ret_ty = if member.starts_with("get") || member == "getHeader" || member == "name" {
-                            Type::String
-                        } else {
-                            Type::Void
-                        };
+                        let ret_ty = self
+                            .method_return_types
+                            .get(&(class_name.clone(), target_method.clone()))
+                            .cloned()
+                            .unwrap_or_else(|| {
+                                if member.starts_with("get") || member == "getHeader" || member == "name" {
+                                    Type::String
+                                } else {
+                                    Type::Void
+                                }
+                            });
+
                         let dest_opt = if ret_ty == Type::Void { None } else { Some(dest) };
                         self.emit(IrInstruction::CallMethod {
                             dest: dest_opt,
@@ -530,10 +584,71 @@ impl IrBuilder {
                             args: arg_ops,
                             ret_ty: ret_ty.clone(),
                         });
-                        IrOperand::Register(dest, ret_ty)
+                        if ret_ty == Type::Void {
+                            IrOperand::ConstantInt(0)
+                        } else {
+                            IrOperand::Register(dest, ret_ty)
+                        }
                     }
                     _ => IrOperand::ConstantInt(0),
                 }
+            }
+            ExprKind::MemberAccess { object, member, .. } => {
+                let obj_op = self.build_expr(object);
+                let dest = self.fresh_reg();
+                let class_name = match obj_op.get_type() {
+                    Type::Class { name } => name,
+                    _ => "".into(),
+                };
+                if let Some((idx, field_ty)) = self.class_field_indices.get(&(class_name.clone(), member.clone())).cloned() {
+                    if let IrOperand::Register(ptr, _) = obj_op {
+                        self.emit(IrInstruction::GetField {
+                            dest,
+                            ptr,
+                            class_name,
+                            field_index: idx,
+                            field_ty: field_ty.clone(),
+                        });
+                        IrOperand::Register(dest, field_ty)
+                    } else {
+                        IrOperand::ConstantInt(0)
+                    }
+                } else {
+                    IrOperand::ConstantInt(0)
+                }
+            }
+            ExprKind::Assign { target, value } => {
+                let val_op = self.build_expr(value);
+                match &target.kind {
+                    ExprKind::MemberAccess { object, member, .. } => {
+                        let obj_op = self.build_expr(object);
+                        let class_name = match obj_op.get_type() {
+                            Type::Class { name } => name,
+                            _ => "".into(),
+                        };
+                        let field_idx_opt = self.class_field_indices.get(&(class_name.clone(), member.clone())).map(|(i, _)| *i);
+                        if let Some(idx) = field_idx_opt {
+                            if let IrOperand::Register(ptr, _) = obj_op {
+                                self.emit(IrInstruction::StoreField {
+                                    ptr,
+                                    class_name,
+                                    field_index: idx,
+                                    val: val_op.clone(),
+                                });
+                            }
+                        }
+                    }
+                    ExprKind::Identifier(name) => {
+                        if let Some((ptr, _)) = self.lookup_var(name) {
+                            self.emit(IrInstruction::Store {
+                                val: val_op.clone(),
+                                ptr,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+                val_op
             }
             ExprKind::Binary { op, left, right } => {
                 let l_op = self.build_expr(left);
