@@ -9,6 +9,8 @@ pub struct ClassInfo {
     pub name: String,
     pub fields: HashMap<String, (Type, bool)>,
     pub methods: HashMap<String, (Vec<Type>, Type)>,
+    pub min_constructor_args: usize,
+    pub max_constructor_args: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -50,6 +52,8 @@ impl TypeChecker {
                 name: "Console".into(),
                 fields: HashMap::new(),
                 methods: console_methods,
+                min_constructor_args: 0,
+                max_constructor_args: 0,
             },
         );
     }
@@ -69,6 +73,8 @@ impl TypeChecker {
                 Item::Class(cls) => {
                     let mut fields = HashMap::new();
                     let mut methods = HashMap::new();
+                    let max_constructor_args = cls.primary_params.len();
+                    let min_constructor_args = cls.primary_params.iter().filter(|p| p.default_value.is_none()).count();
 
                     for param in &cls.primary_params {
                         let field_name = format!("_{}", param.name);
@@ -95,6 +101,8 @@ impl TypeChecker {
                             name: cls.name.clone(),
                             fields,
                             methods,
+                            min_constructor_args,
+                            max_constructor_args,
                         },
                     );
                 }
@@ -123,7 +131,17 @@ impl TypeChecker {
 
     fn check_method(&mut self, cls: &ClassDecl, method: &MethodDecl) {
         let return_type = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
-        self.current_return_type = Some(return_type);
+        self.current_return_type = Some(return_type.clone());
+
+        if return_type != Type::Void {
+            let has_return = method.body.iter().any(|stmt| matches!(stmt.kind, StmtKind::Return(_)));
+            if !has_return {
+                self.diagnostics.push(Diagnostic::error(
+                    format!("Method '{}' must return a value of type '{:?}'", method.name, return_type),
+                    Some(method.span),
+                ));
+            }
+        }
 
         self.symbol_table.push_scope();
 
@@ -349,12 +367,13 @@ impl TypeChecker {
                     self.check_expr(cls, arg);
                 }
                 if let Some(info) = self.classes.get(class_name) {
-                    if info.fields.len() != args.len() {
+                    if args.len() < info.min_constructor_args || args.len() > info.max_constructor_args {
                         self.diagnostics.push(Diagnostic::error(
                             format!(
-                                "Class '{}' constructor expected {} arguments, got {}",
+                                "Class '{}' constructor expected between {} and {} arguments, got {}",
                                 class_name,
-                                info.fields.len(),
+                                info.min_constructor_args,
+                                info.max_constructor_args,
                                 args.len()
                             ),
                             Some(expr.span),

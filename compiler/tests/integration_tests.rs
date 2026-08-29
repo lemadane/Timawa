@@ -274,3 +274,72 @@ fn test_e2e_control_flow_and_dynamic_alloc() {
     assert!(llvm_ir.contains("br i1"));
     assert!(!llvm_ir.contains("call i8* @talas_alloc(i64 32, i64 8)"));
 }
+
+#[test]
+fn test_e2e_nested_cfg_and_logical_ops() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final a = true
+                final b = false
+                final res = a nand b
+                final comp = 10 > 5
+
+                if (a) {
+                    if (b) {
+                        print(`Inner B`)
+                    }
+                    print(`Outer A`)
+                }
+
+                for {
+                    break
+                    print(`UNREACHABLE DEAD CODE`)
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty(), "Parsing failed: {:?}", parser.diagnostics);
+
+    let mut checker = TypeChecker::new();
+    assert!(checker.check_program(&program), "Type checking failed: {:?}", checker.diagnostics);
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(llvm_ir.contains("icmp sgt i64 10, 5"));
+    assert!(llvm_ir.contains("and i1"));
+    assert!(llvm_ir.contains("xor i1 %tmp_nand_"));
+    assert!(!llvm_ir.contains("UNREACHABLE DEAD CODE"));
+}
+
+#[test]
+fn test_e2e_default_constructor_args() {
+    let source_code = r#"
+        class User(
+            string name,
+            var int age = 0
+        ) {}
+
+        class Application {
+            main() {
+                final user = User(`Lem`)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty(), "Parsing failed: {:?}", parser.diagnostics);
+
+    let mut checker = TypeChecker::new();
+    assert!(checker.check_program(&program), "Type checking failed: {:?}", checker.diagnostics);
+}

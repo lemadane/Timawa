@@ -200,27 +200,60 @@ impl TextualLlvmEmitter {
                 let ty_str = self.type_to_llvm(ty);
                 let l_str = self.emit_operand(left);
                 let r_str = self.emit_operand(right);
-                let op_str = match op {
-                    BinaryOp::Add => if ty == &Type::Decimal { "fadd" } else { "add" },
-                    BinaryOp::Sub => if ty == &Type::Decimal { "fsub" } else { "sub" },
-                    BinaryOp::Mul => if ty == &Type::Decimal { "fmul" } else { "mul" },
-                    BinaryOp::Div => if ty == &Type::Decimal { "fdiv" } else { "sdiv" },
-                    BinaryOp::Mod => "srem",
-                    BinaryOp::Equal => if ty == &Type::Decimal { "fcmp oeq" } else { "icmp eq" },
-                    BinaryOp::NotEqual => if ty == &Type::Decimal { "fcmp one" } else { "icmp ne" },
-                    BinaryOp::Less => if ty == &Type::Decimal { "fcmp olt" } else { "icmp slt" },
-                    BinaryOp::LessEqual => if ty == &Type::Decimal { "fcmp ole" } else { "icmp sle" },
-                    BinaryOp::Greater => if ty == &Type::Decimal { "fcmp ogt" } else { "icmp sgt" },
-                    BinaryOp::GreaterEqual => if ty == &Type::Decimal { "fcmp oge" } else { "icmp sge" },
-                    BinaryOp::And => "and",
-                    BinaryOp::Or => "or",
-                    BinaryOp::Xor => "xor",
-                    BinaryOp::Nand => "and",
-                    BinaryOp::Nor => "or",
-                    BinaryOp::Xnor => "xor",
-                    other => panic!("Unsupported binary operator lowering: {:?}", other),
-                };
-                format!("%{} = {} {} {}, {}", dest.0, op_str, ty_str, l_str, r_str)
+                match op {
+                    BinaryOp::Nand => {
+                        let tmp = format!("tmp_nand_{}", self.string_counter);
+                        self.string_counter += 1;
+                        format!(
+                            "%{} = and i1 {}, {}\n  %{} = xor i1 %{}, true",
+                            tmp, l_str, r_str, dest.0, tmp
+                        )
+                    }
+                    BinaryOp::Nor => {
+                        let tmp = format!("tmp_nor_{}", self.string_counter);
+                        self.string_counter += 1;
+                        format!(
+                            "%{} = or i1 {}, {}\n  %{} = xor i1 %{}, true",
+                            tmp, l_str, r_str, dest.0, tmp
+                        )
+                    }
+                    BinaryOp::Xnor => {
+                        let tmp = format!("tmp_xnor_{}", self.string_counter);
+                        self.string_counter += 1;
+                        format!(
+                            "%{} = xor i1 {}, {}\n  %{} = xor i1 %{}, true",
+                            tmp, l_str, r_str, dest.0, tmp
+                        )
+                    }
+                    BinaryOp::NullCoalescing => {
+                        let tmp_cond = format!("tmp_nc_{}", self.string_counter);
+                        self.string_counter += 1;
+                        format!(
+                            "%{} = icmp ne {} {}, null\n  %{} = select i1 %{}, {} {}, {}",
+                            tmp_cond, ty_str, l_str, dest.0, tmp_cond, ty_str, l_str, r_str
+                        )
+                    }
+                    _ => {
+                        let op_str = match op {
+                            BinaryOp::Add => if ty == &Type::Decimal { "fadd" } else { "add" },
+                            BinaryOp::Sub => if ty == &Type::Decimal { "fsub" } else { "sub" },
+                            BinaryOp::Mul => if ty == &Type::Decimal { "fmul" } else { "mul" },
+                            BinaryOp::Div => if ty == &Type::Decimal { "fdiv" } else { "sdiv" },
+                            BinaryOp::Mod => "srem",
+                            BinaryOp::Equal => if ty == &Type::Decimal { "fcmp oeq" } else { "icmp eq" },
+                            BinaryOp::NotEqual => if ty == &Type::Decimal { "fcmp one" } else { "icmp ne" },
+                            BinaryOp::Less => if ty == &Type::Decimal { "fcmp olt" } else { "icmp slt" },
+                            BinaryOp::LessEqual => if ty == &Type::Decimal { "fcmp ole" } else { "icmp sle" },
+                            BinaryOp::Greater => if ty == &Type::Decimal { "fcmp ogt" } else { "icmp sgt" },
+                            BinaryOp::GreaterEqual => if ty == &Type::Decimal { "fcmp oge" } else { "icmp sge" },
+                            BinaryOp::And => "and",
+                            BinaryOp::Or => "or",
+                            BinaryOp::Xor => "xor",
+                            other => panic!("Unsupported binary operator lowering: {:?}", other),
+                        };
+                        format!("%{} = {} {} {}, {}", dest.0, op_str, ty_str, l_str, r_str)
+                    }
+                }
             }
             IrInstruction::InstantiateClass { dest, class_name, args } => {
                 let class_type = format!("%{}", class_name);

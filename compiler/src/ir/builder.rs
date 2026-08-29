@@ -409,23 +409,29 @@ impl IrBuilder {
                 let else_block = self.fresh_block();
                 let merge_block = self.fresh_block();
 
-                let current_b = self.current_block_id.unwrap_or(then_block);
-                self.emit(IrInstruction::Branch {
-                    cond: cond_op,
-                    then_block,
-                    else_block: if else_branch.is_some() { else_block } else { merge_block },
-                });
-                self.finish_block(current_b);
+                if let Some(cb) = self.current_block_id {
+                    self.emit(IrInstruction::Branch {
+                        cond: cond_op,
+                        then_block,
+                        else_block: if else_branch.is_some() { else_block } else { merge_block },
+                    });
+                    self.finish_block(cb);
+                }
 
                 self.current_block_id = Some(then_block);
                 self.push_var_scope();
                 for s in then_branch {
                     self.build_stmt(s);
+                    if self.is_current_terminated() {
+                        break;
+                    }
                 }
                 if !self.is_current_terminated() {
                     self.emit(IrInstruction::Jump { target: merge_block });
                 }
-                self.finish_block(then_block);
+                if let Some(cb) = self.current_block_id {
+                    self.finish_block(cb);
+                }
                 self.pop_var_scope();
 
                 if let Some(eb) = else_branch {
@@ -433,11 +439,16 @@ impl IrBuilder {
                     self.push_var_scope();
                     for s in eb {
                         self.build_stmt(s);
+                        if self.is_current_terminated() {
+                            break;
+                        }
                     }
                     if !self.is_current_terminated() {
                         self.emit(IrInstruction::Jump { target: merge_block });
                     }
-                    self.finish_block(else_block);
+                    if let Some(cb) = self.current_block_id {
+                        self.finish_block(cb);
+                    }
                     self.pop_var_scope();
                 }
 
@@ -472,11 +483,16 @@ impl IrBuilder {
                 self.push_var_scope();
                 for s in body {
                     self.build_stmt(s);
+                    if self.is_current_terminated() {
+                        break;
+                    }
                 }
                 if !self.is_current_terminated() {
                     self.emit(IrInstruction::Jump { target: header_block });
                 }
-                self.finish_block(body_block);
+                if let Some(cb) = self.current_block_id {
+                    self.finish_block(cb);
+                }
                 self.pop_var_scope();
                 self.loop_stack.pop();
 
@@ -662,17 +678,47 @@ impl IrBuilder {
                 let l_op = self.build_expr(left);
                 let r_op = self.build_expr(right);
                 let dest = self.fresh_reg();
-                let ty = l_op.get_type();
+
+                let res_ty = match op {
+                    BinaryOp::Equal
+                    | BinaryOp::NotEqual
+                    | BinaryOp::Less
+                    | BinaryOp::LessEqual
+                    | BinaryOp::Greater
+                    | BinaryOp::GreaterEqual
+                    | BinaryOp::And
+                    | BinaryOp::Nand
+                    | BinaryOp::Or
+                    | BinaryOp::Nor
+                    | BinaryOp::Xor
+                    | BinaryOp::Xnor => Type::Bool,
+                    _ => l_op.get_type(),
+                };
+
                 self.emit(IrInstruction::Binary {
                     dest,
                     op: op.clone(),
                     left: l_op,
                     right: r_op,
+                    ty: res_ty.clone(),
+                });
+                IrOperand::Register(dest, res_ty)
+            }
+            ExprKind::Unary { operand, .. } => {
+                let op_val = self.build_expr(operand);
+                let dest = self.fresh_reg();
+                let ty = op_val.get_type();
+                self.emit(IrInstruction::Binary {
+                    dest,
+                    op: BinaryOp::Sub,
+                    left: IrOperand::ConstantInt(0),
+                    right: op_val,
                     ty: ty.clone(),
                 });
                 IrOperand::Register(dest, ty)
             }
-            _ => IrOperand::ConstantInt(0),
-        }
+            unsupported => {
+                panic!("Native code generation for '{:?}' is not implemented yet", unsupported);
+            }
     }
 }
