@@ -1,4 +1,5 @@
 use super::nodes::*;
+use crate::diagnostics::Diagnostic;
 use crate::parser::*;
 use crate::types::Type;
 use std::collections::HashMap;
@@ -15,6 +16,7 @@ pub struct IrBuilder {
     class_decls: HashMap<String, ClassDecl>,
     loop_stack: Vec<(BlockId, BlockId)>,
     current_block_id: Option<BlockId>,
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 impl IrBuilder {
@@ -31,6 +33,7 @@ impl IrBuilder {
             class_decls: HashMap::new(),
             loop_stack: Vec::new(),
             current_block_id: None,
+            diagnostics: Vec::new(),
         }
     }
 
@@ -390,6 +393,38 @@ impl IrBuilder {
         }
     }
 
+    pub fn build_class_instantiation(&mut self, class_name: &str, args: &[Expr]) -> IrOperand {
+        let mut arg_ops: Vec<IrOperand> = args.iter().map(|a| self.build_expr(a)).collect();
+        if let Some(cls_decl) = self.class_decls.get(class_name).cloned() {
+            if arg_ops.len() < cls_decl.primary_params.len() {
+                for param in cls_decl.primary_params.iter().skip(arg_ops.len()) {
+                    if let Some(def_expr) = &param.default_value {
+                        arg_ops.push(self.build_expr(def_expr));
+                    } else {
+                        let default_op = match self.type_spec_to_type(&param.type_spec) {
+                            Type::Int | Type::Long | Type::Byte => IrOperand::ConstantInt(0),
+                            Type::Decimal => IrOperand::ConstantDecimal(0.0),
+                            Type::Bool => IrOperand::ConstantBool(false),
+                            Type::String => IrOperand::ConstantString("".into()),
+                            Type::Class { name: ref cname } => {
+                                self.build_class_instantiation(cname, &[])
+                            }
+                            _ => IrOperand::Null,
+                        };
+                        arg_ops.push(default_op);
+                    }
+                }
+            }
+        }
+        let dest = self.fresh_reg();
+        self.emit(IrInstruction::InstantiateClass {
+            dest,
+            class_name: class_name.to_string(),
+            args: arg_ops,
+        });
+        IrOperand::Register(dest, Type::Class { name: class_name.to_string() })
+    }
+
     fn build_stmt(&mut self, stmt: &Stmt) {
         match &stmt.kind {
             StmtKind::LocalDecl { name, initializer, type_annotation, .. } => {
@@ -403,13 +438,7 @@ impl IrBuilder {
                         Type::Bool => IrOperand::ConstantBool(false),
                         Type::String => IrOperand::ConstantString("".into()),
                         Type::Class { name: ref cname } => {
-                            let sub_dest = self.fresh_reg();
-                            self.emit(IrInstruction::InstantiateClass {
-                                dest: sub_dest,
-                                class_name: cname.clone(),
-                                args: Vec::new(),
-                            });
-                            IrOperand::Register(sub_dest, Type::Class { name: cname.clone() })
+                            self.build_class_instantiation(cname, &[])
                         }
                         _ => IrOperand::Null,
                     }
@@ -579,41 +608,7 @@ impl IrBuilder {
                 IrOperand::Register(dest, ty)
             }
             ExprKind::ClassInstantiation { class_name, args } => {
-                let mut arg_ops: Vec<IrOperand> = args.iter().map(|a| self.build_expr(a)).collect();
-                if let Some(cls_decl) = self.class_decls.get(class_name).cloned() {
-                    if arg_ops.len() < cls_decl.primary_params.len() {
-                        for param in cls_decl.primary_params.iter().skip(arg_ops.len()) {
-                            if let Some(def_expr) = &param.default_value {
-                                arg_ops.push(self.build_expr(def_expr));
-                            } else {
-                                let default_op = match self.type_spec_to_type(&param.type_spec) {
-                                    Type::Int | Type::Long | Type::Byte => IrOperand::ConstantInt(0),
-                                    Type::Decimal => IrOperand::ConstantDecimal(0.0),
-                                    Type::Bool => IrOperand::ConstantBool(false),
-                                    Type::String => IrOperand::ConstantString("".into()),
-                                    Type::Class { name: ref cname } => {
-                                        let sub_dest = self.fresh_reg();
-                                        self.emit(IrInstruction::InstantiateClass {
-                                            dest: sub_dest,
-                                            class_name: cname.clone(),
-                                            args: Vec::new(),
-                                        });
-                                        IrOperand::Register(sub_dest, Type::Class { name: cname.clone() })
-                                    }
-                                    _ => IrOperand::Null,
-                                };
-                                arg_ops.push(default_op);
-                            }
-                        }
-                    }
-                }
-                let dest = self.fresh_reg();
-                self.emit(IrInstruction::InstantiateClass {
-                    dest,
-                    class_name: class_name.clone(),
-                    args: arg_ops,
-                });
-                IrOperand::Register(dest, Type::Class { name: class_name.clone() })
+                self.build_class_instantiation(class_name, args)
             }
             ExprKind::Call { callee, args } => {
                 let arg_ops: Vec<IrOperand> = args.iter().map(|a| self.build_expr(a)).collect();
@@ -770,7 +765,12 @@ impl IrBuilder {
                 IrOperand::Register(dest, ty)
             }
             unsupported => {
-                panic!("Native code generation for '{:?}' is not implemented yet", unsupported);
+                self.diagnostics.push(Diagnostic::error(
+                    format!("Native code generation for '{:?}' is not implemented yet", unsupported),
+                    Some(expr.span),
+                ));
+                IrOperand::Null
             }
+        }
     }
 }

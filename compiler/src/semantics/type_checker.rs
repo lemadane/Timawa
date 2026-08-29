@@ -9,6 +9,7 @@ pub struct ClassInfo {
     pub name: String,
     pub fields: HashMap<String, (Type, bool)>,
     pub methods: HashMap<String, (Vec<Type>, Type)>,
+    pub param_types: Vec<Type>,
     pub min_constructor_args: usize,
     pub max_constructor_args: usize,
 }
@@ -52,6 +53,7 @@ impl TypeChecker {
                 name: "Console".into(),
                 fields: HashMap::new(),
                 methods: console_methods,
+                param_types: Vec::new(),
                 min_constructor_args: 0,
                 max_constructor_args: 0,
             },
@@ -59,6 +61,8 @@ impl TypeChecker {
     }
 
     pub fn check_program(&mut self, program: &Program) -> bool {
+        self.diagnostics.clear();
+
         for item in &program.items {
             match item {
                 Item::Trait(tr) => {
@@ -401,10 +405,13 @@ impl TypeChecker {
                 Some(val_ty)
             }
             ExprKind::ClassInstantiation { class_name, args } => {
+                let mut arg_types = Vec::new();
                 for arg in args {
-                    self.check_expr(cls, arg);
+                    if let Some(t) = self.check_expr(cls, arg) {
+                        arg_types.push(t);
+                    }
                 }
-                if let Some(info) = self.classes.get(class_name) {
+                if let Some(info) = self.classes.get(class_name).cloned() {
                     if args.len() > info.max_constructor_args {
                         self.diagnostics.push(Diagnostic::error(
                             format!(
@@ -415,6 +422,21 @@ impl TypeChecker {
                             ),
                             Some(expr.span),
                         ));
+                    } else {
+                        for (i, (arg_ty, param_ty)) in arg_types.iter().zip(info.param_types.iter()).enumerate() {
+                            if arg_ty != param_ty && arg_ty != &Type::Void {
+                                self.diagnostics.push(Diagnostic::error(
+                                    format!(
+                                        "Expected '{:?}' for argument {} of '{}', but got '{:?}'",
+                                        param_ty,
+                                        i + 1,
+                                        class_name,
+                                        arg_ty
+                                    ),
+                                    Some(expr.span),
+                                ));
+                            }
+                        }
                     }
                 } else if !self.traits.contains_key(class_name) {
                     self.diagnostics.push(Diagnostic::error(

@@ -465,3 +465,70 @@ fn test_e2e_go_zero_value_user() {
     assert!(llvm_ir.contains("%User = type { i64, i8*, i32 }"));
     assert!(llvm_ir.contains("store i32 18"));
 }
+
+#[test]
+fn test_e2e_unified_zero_value_instantiation() {
+    let source_code = r#"
+        class Account(
+            long id,
+            string holder,
+            var int balance = 100
+        ) {}
+
+        class Application {
+            main() {
+                Account a1
+                final a2 = Account()
+                final a3 = Account(1000L)
+                final a4 = Account(1000L, `Lem`)
+                final a5 = Account(1000L, `Lem`, 500)
+
+                print(a1.balance())
+                print(a2.balance())
+                print(a3.balance())
+                print(a4.balance())
+                print(a5.balance())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty(), "Parsing failed: {:?}", parser.diagnostics);
+
+    let mut checker = TypeChecker::new();
+    assert!(checker.check_program(&program), "Type checking failed: {:?}", checker.diagnostics);
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(llvm_ir.contains("store i32 100"));
+    assert!(llvm_ir.contains("store i32 500"));
+}
+
+#[test]
+fn test_type_checker_constructor_argument_types() {
+    let source_code = r#"
+        class User(long id, string name) {}
+
+        class Application {
+            main() {
+                final invalid = User(`Lem`, 1000L)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty());
+
+    let mut checker = TypeChecker::new();
+    let is_valid = checker.check_program(&program);
+    assert!(!is_valid, "Type checker should reject mismatched constructor argument types");
+    assert!(checker.diagnostics.iter().any(|d| d.message.contains("Expected") || d.message.contains("argument")));
+}
