@@ -356,20 +356,15 @@ impl IrBuilder {
 
         for stmt in &method.body {
             self.build_stmt(stmt);
+            if self.is_current_terminated() {
+                break;
+            }
         }
 
         let ret_ty = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
 
         if !self.is_current_terminated() {
-            if ret_ty == Type::Void {
-                self.emit(IrInstruction::Return { val: None });
-            } else if ret_ty == Type::String {
-                let default_str = IrOperand::ConstantString("=== PRINTABLE ITEM ===".to_string());
-                self.emit(IrInstruction::Return { val: Some(default_str) });
-            } else {
-                let default_val = IrOperand::ConstantInt(0);
-                self.emit(IrInstruction::Return { val: Some(default_val) });
-            }
+            self.emit(IrInstruction::Return { val: None });
         }
 
         if let Some(b_id) = self.current_block_id {
@@ -390,9 +385,27 @@ impl IrBuilder {
 
     fn build_stmt(&mut self, stmt: &Stmt) {
         match &stmt.kind {
-            StmtKind::LocalDecl { name, initializer, .. } => {
+            StmtKind::LocalDecl { name, initializer, type_spec } => {
                 let init_op = if let Some(init) = initializer {
                     self.build_expr(init)
+                } else if let Some(ts) = type_spec {
+                    let ty = self.type_spec_to_type(ts);
+                    match ty {
+                        Type::Int | Type::Long | Type::Byte => IrOperand::ConstantInt(0),
+                        Type::Decimal => IrOperand::ConstantDecimal(0.0),
+                        Type::Bool => IrOperand::ConstantBool(false),
+                        Type::String => IrOperand::ConstantString("".into()),
+                        Type::Class { name: ref cname } => {
+                            let sub_dest = self.fresh_reg();
+                            self.emit(IrInstruction::InstantiateClass {
+                                dest: sub_dest,
+                                class_name: cname.clone(),
+                                args: Vec::new(),
+                            });
+                            IrOperand::Register(sub_dest, Type::Class { name: cname.clone() })
+                        }
+                        _ => IrOperand::Null,
+                    }
                 } else {
                     IrOperand::ConstantInt(0)
                 };
@@ -559,7 +572,34 @@ impl IrBuilder {
                 IrOperand::Register(dest, ty)
             }
             ExprKind::ClassInstantiation { class_name, args } => {
-                let arg_ops = args.iter().map(|a| self.build_expr(a)).collect();
+                let mut arg_ops: Vec<IrOperand> = args.iter().map(|a| self.build_expr(a)).collect();
+                if let Some(cls_decl) = self.class_decls.get(class_name).cloned() {
+                    if arg_ops.len() < cls_decl.primary_params.len() {
+                        for param in cls_decl.primary_params.iter().skip(arg_ops.len()) {
+                            if let Some(def_expr) = &param.default_value {
+                                arg_ops.push(self.build_expr(def_expr));
+                            } else {
+                                let default_op = match self.type_spec_to_type(&param.type_spec) {
+                                    Type::Int | Type::Long | Type::Byte => IrOperand::ConstantInt(0),
+                                    Type::Decimal => IrOperand::ConstantDecimal(0.0),
+                                    Type::Bool => IrOperand::ConstantBool(false),
+                                    Type::String => IrOperand::ConstantString("".into()),
+                                    Type::Class { name: ref cname } => {
+                                        let sub_dest = self.fresh_reg();
+                                        self.emit(IrInstruction::InstantiateClass {
+                                            dest: sub_dest,
+                                            class_name: cname.clone(),
+                                            args: Vec::new(),
+                                        });
+                                        IrOperand::Register(sub_dest, Type::Class { name: cname.clone() })
+                                    }
+                                    _ => IrOperand::Null,
+                                };
+                                arg_ops.push(default_op);
+                            }
+                        }
+                    }
+                }
                 let dest = self.fresh_reg();
                 self.emit(IrInstruction::InstantiateClass {
                     dest,
@@ -680,6 +720,7 @@ impl IrBuilder {
                 let l_op = self.build_expr(left);
                 let r_op = self.build_expr(right);
                 let dest = self.fresh_reg();
+                let operand_ty = l_op.get_type();
 
                 let res_ty = match op {
                     BinaryOp::Equal
@@ -694,7 +735,7 @@ impl IrBuilder {
                     | BinaryOp::Nor
                     | BinaryOp::Xor
                     | BinaryOp::Xnor => Type::Bool,
-                    _ => l_op.get_type(),
+                    _ => operand_ty.clone(),
                 };
 
                 self.emit(IrInstruction::Binary {
@@ -702,7 +743,8 @@ impl IrBuilder {
                     op: op.clone(),
                     left: l_op,
                     right: r_op,
-                    ty: res_ty.clone(),
+                    operand_ty,
+                    result_ty: res_ty.clone(),
                 });
                 IrOperand::Register(dest, res_ty)
             }
@@ -715,7 +757,8 @@ impl IrBuilder {
                     op: BinaryOp::Sub,
                     left: IrOperand::ConstantInt(0),
                     right: op_val,
-                    ty: ty.clone(),
+                    operand_ty: ty.clone(),
+                    result_ty: ty.clone(),
                 });
                 IrOperand::Register(dest, ty)
             }

@@ -245,8 +245,32 @@ impl TypeChecker {
             StmtKind::Break => {}
             StmtKind::Continue => {}
             StmtKind::Return(expr_opt) => {
-                if let Some(e) = expr_opt {
-                    self.check_expr(cls, e);
+                if let Some(expected_ret) = self.current_return_type.clone() {
+                    if expected_ret == Type::Void {
+                        if expr_opt.is_some() {
+                            self.diagnostics.push(Diagnostic::error(
+                                "Cannot return a value from a method returning Void".into(),
+                                Some(stmt.span),
+                            ));
+                        }
+                    } else {
+                        if let Some(e) = expr_opt {
+                            let actual_ty = self.check_expr(cls, e);
+                            if let Some(act) = actual_ty {
+                                if act != expected_ret && act != Type::Void {
+                                    self.diagnostics.push(Diagnostic::error(
+                                        format!("Mismatched return type: expected '{:?}', found '{:?}'", expected_ret, act),
+                                        Some(stmt.span),
+                                    ));
+                                }
+                            }
+                        } else {
+                            self.diagnostics.push(Diagnostic::error(
+                                format!("Non-void method must return a value of type '{:?}'", expected_ret),
+                                Some(stmt.span),
+                            ));
+                        }
+                    }
                 }
             }
             StmtKind::Yield(expr) => {
@@ -381,12 +405,11 @@ impl TypeChecker {
                     self.check_expr(cls, arg);
                 }
                 if let Some(info) = self.classes.get(class_name) {
-                    if args.len() < info.min_constructor_args || args.len() > info.max_constructor_args {
+                    if args.len() > info.max_constructor_args {
                         self.diagnostics.push(Diagnostic::error(
                             format!(
-                                "Class '{}' constructor expected between {} and {} arguments, got {}",
+                                "Class '{}' constructor expected at most {} arguments, got {}",
                                 class_name,
-                                info.min_constructor_args,
                                 info.max_constructor_args,
                                 args.len()
                             ),

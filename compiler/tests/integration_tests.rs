@@ -383,3 +383,47 @@ fn test_e2e_definitely_returns_if_branches() {
     assert!(llvm_ir.contains("ret i32 10"));
     assert!(llvm_ir.contains("ret i32 20"));
 }
+
+#[test]
+fn test_e2e_go_style_zero_values() {
+    let source_code = r#"
+        class User(
+            long id,
+            string name,
+            var int age = 18
+        ) {}
+
+        class Application {
+            main() {
+                User user
+                final u1 = User()
+                final u2 = User(`Lem`)
+                final u3 = User(`Lem`, 35)
+
+                print(user.id())
+                print(user.name())
+                print(u1.age())
+                print(u2.age())
+                print(u3.age())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty(), "Parsing failed: {:?}", parser.diagnostics);
+
+    let mut checker = TypeChecker::new();
+    assert!(checker.check_program(&program), "Type checking failed: {:?}", checker.diagnostics);
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(llvm_ir.contains("call i8* @talas_alloc"));
+    assert!(llvm_ir.contains("store i32 18"));
+    assert!(llvm_ir.contains("store i32 35"));
+}
