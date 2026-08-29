@@ -427,3 +427,41 @@ fn test_e2e_go_style_zero_values() {
     assert!(llvm_ir.contains("store i32 18"));
     assert!(llvm_ir.contains("store i32 35"));
 }
+
+#[test]
+fn test_e2e_go_zero_value_user() {
+    let source_code = r#"
+        class User(
+            long id,
+            string name,
+            var int age = 18
+        ) {}
+
+        class Application {
+            main() {
+                User user
+
+                print(user.id())
+                print(user.name())
+                print(user.age())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty(), "Parsing failed: {:?}", parser.diagnostics);
+
+    let mut checker = TypeChecker::new();
+    assert!(checker.check_program(&program), "Type checking failed: {:?}", checker.diagnostics);
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(llvm_ir.contains("%User = type { i64, i8*, i32 }"));
+    assert!(llvm_ir.contains("store i32 18"));
+}

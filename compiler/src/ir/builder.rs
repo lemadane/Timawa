@@ -101,6 +101,13 @@ impl IrBuilder {
         self.method_return_types.clear();
         self.class_fields.clear();
         self.class_field_indices.clear();
+        self.class_decls.clear();
+
+        for item in &program.items {
+            if let Item::Class(cls) = item {
+                self.class_decls.insert(cls.name.clone(), cls.clone());
+            }
+        }
 
         let mut ir_classes = Vec::new();
         let mut ir_functions = Vec::new();
@@ -385,10 +392,10 @@ impl IrBuilder {
 
     fn build_stmt(&mut self, stmt: &Stmt) {
         match &stmt.kind {
-            StmtKind::LocalDecl { name, initializer, type_spec } => {
+            StmtKind::LocalDecl { name, initializer, type_annotation, .. } => {
                 let init_op = if let Some(init) = initializer {
                     self.build_expr(init)
-                } else if let Some(ts) = type_spec {
+                } else if let Some(ts) = type_annotation {
                     let ty = self.type_spec_to_type(ts);
                     match ty {
                         Type::Int | Type::Long | Type::Byte => IrOperand::ConstantInt(0),
