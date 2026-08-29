@@ -224,8 +224,8 @@ fn main() {
                     println!("Successfully built native binary: './{}'", out_binary);
                 }
                 _ => {
-                    println!("LLVM IR generated at '{}'. To link manually:", ll_path);
-                    println!("  clang {} -ltalas_runtime -o {}", ll_path, out_binary);
+                    eprintln!("Error: Linking with clang failed.");
+                    process::exit(1);
                 }
             }
         }
@@ -256,8 +256,19 @@ fn main() {
                     let run_status = Command::new(&bin_path).status();
                     let _ = fs::remove_file(&ll_path);
                     let _ = fs::remove_file(&bin_path);
-                    if let Ok(exit_code) = run_status {
-                        process::exit(exit_code.code().unwrap_or(0));
+                    match run_status {
+                        Ok(exit_status) => {
+                            if let Some(code) = exit_status.code() {
+                                process::exit(code);
+                            } else {
+                                eprintln!("Process terminated abnormally by signal.");
+                                process::exit(1);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Error executing temporary binary: {}", e);
+                            process::exit(1);
+                        }
                     }
                 }
                 _ => {

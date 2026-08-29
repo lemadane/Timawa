@@ -12,6 +12,8 @@ pub struct IrBuilder {
     method_return_types: HashMap<(String, String), Type>,
     class_fields: HashMap<(String, String), Type>,
     class_field_indices: HashMap<(String, String), (usize, Type)>,
+    loop_stack: Vec<(BlockId, BlockId)>,
+    current_block_id: Option<BlockId>,
 }
 
 impl IrBuilder {
@@ -25,6 +27,8 @@ impl IrBuilder {
             method_return_types: HashMap::new(),
             class_fields: HashMap::new(),
             class_field_indices: HashMap::new(),
+            loop_stack: Vec::new(),
+            current_block_id: None,
         }
     }
 
@@ -60,6 +64,12 @@ impl IrBuilder {
     fn finish_block(&mut self, id: BlockId) {
         let instrs = std::mem::take(&mut self.current_instructions);
         self.blocks.push(BasicBlock { id, instructions: instrs });
+    }
+
+    fn is_current_terminated(&self) -> bool {
+        self.current_instructions.last().map_or(false, |i| {
+            matches!(i, IrInstruction::Return { .. } | IrInstruction::Jump { .. } | IrInstruction::Branch { .. })
+        })
     }
 
     fn push_var_scope(&mut self) {
@@ -308,9 +318,12 @@ impl IrBuilder {
         self.blocks.clear();
         self.current_instructions.clear();
         self.var_pointers.clear();
+        self.loop_stack.clear();
 
         self.push_var_scope();
         let entry_block = self.fresh_block();
+        self.current_block_id = Some(entry_block);
+
         let receiver_reg = self.fresh_reg();
         let this_ty = Type::Class { name: cls.name.clone() };
 
@@ -319,16 +332,7 @@ impl IrBuilder {
 
         for p in &method.params {
             let p_reg = self.fresh_reg();
-            let p_ty = match &p.type_spec {
-                TypeSpec::Int => Type::Int,
-                TypeSpec::Decimal => Type::Decimal,
-                TypeSpec::Byte => Type::Byte,
-                TypeSpec::Long => Type::Long,
-                TypeSpec::Bool => Type::Bool,
-                TypeSpec::String => Type::String,
-                TypeSpec::Class(n) => Type::Class { name: n.clone() },
-                TypeSpec::Nullable(_) => Type::Nullable(Box::new(Type::Void)),
-            };
+            let p_ty = self.type_spec_to_type(&p.type_spec);
             ir_params.push((p_reg, p_ty.clone()));
             param_info.push((p.name.clone(), p_reg, p_ty));
         }
@@ -352,25 +356,12 @@ impl IrBuilder {
             self.build_stmt(stmt);
         }
 
-        let ret_ty = match &method.return_type {
-            None => Type::Void,
-            Some(TypeSpec::Int) => Type::Int,
-            Some(TypeSpec::Decimal) => Type::Decimal,
-            Some(TypeSpec::Long) => Type::Long,
-            Some(TypeSpec::Bool) => Type::Bool,
-            Some(TypeSpec::String) => Type::String,
-            Some(TypeSpec::Class(n)) => Type::Class { name: n.clone() },
-            Some(TypeSpec::Byte) => Type::Byte,
-            Some(TypeSpec::Nullable(_)) => Type::Nullable(Box::new(Type::Void)),
-        };
+        let ret_ty = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
 
-        if ret_ty == Type::Void {
-            let is_terminated = self.current_instructions.last().map_or(false, |i| matches!(i, IrInstruction::Return { .. }));
-            if !is_terminated {
+        if !self.is_current_terminated() {
+            if ret_ty == Type::Void {
                 self.emit(IrInstruction::Return { val: None });
-            }
-        } else if method.body.is_empty() {
-            if ret_ty == Type::String {
+            } else if ret_ty == Type::String {
                 let default_str = IrOperand::ConstantString("=== PRINTABLE ITEM ===".to_string());
                 self.emit(IrInstruction::Return { val: Some(default_str) });
             } else {
@@ -379,7 +370,10 @@ impl IrBuilder {
             }
         }
 
-        self.finish_block(entry_block);
+        if let Some(b_id) = self.current_block_id {
+            self.finish_block(b_id);
+        }
+
         self.pop_var_scope();
 
         IrFunction {
@@ -415,29 +409,39 @@ impl IrBuilder {
                 let else_block = self.fresh_block();
                 let merge_block = self.fresh_block();
 
+                let current_b = self.current_block_id.unwrap_or(then_block);
                 self.emit(IrInstruction::Branch {
                     cond: cond_op,
                     then_block,
                     else_block: if else_branch.is_some() { else_block } else { merge_block },
                 });
+                self.finish_block(current_b);
 
+                self.current_block_id = Some(then_block);
                 self.push_var_scope();
                 for s in then_branch {
                     self.build_stmt(s);
                 }
-                self.emit(IrInstruction::Jump { target: merge_block });
+                if !self.is_current_terminated() {
+                    self.emit(IrInstruction::Jump { target: merge_block });
+                }
                 self.finish_block(then_block);
                 self.pop_var_scope();
 
                 if let Some(eb) = else_branch {
+                    self.current_block_id = Some(else_block);
                     self.push_var_scope();
                     for s in eb {
                         self.build_stmt(s);
                     }
-                    self.emit(IrInstruction::Jump { target: merge_block });
+                    if !self.is_current_terminated() {
+                        self.emit(IrInstruction::Jump { target: merge_block });
+                    }
                     self.finish_block(else_block);
                     self.pop_var_scope();
                 }
+
+                self.current_block_id = Some(merge_block);
             }
             StmtKind::For { condition_or_iterable, body, .. } => {
                 let header_block = self.fresh_block();
@@ -445,7 +449,11 @@ impl IrBuilder {
                 let exit_block = self.fresh_block();
 
                 self.emit(IrInstruction::Jump { target: header_block });
+                if let Some(cb) = self.current_block_id {
+                    self.finish_block(cb);
+                }
 
+                self.current_block_id = Some(header_block);
                 let cond_op = if let Some(cond) = condition_or_iterable {
                     self.build_expr(cond)
                 } else {
@@ -459,16 +467,31 @@ impl IrBuilder {
                 });
                 self.finish_block(header_block);
 
+                self.current_block_id = Some(body_block);
+                self.loop_stack.push((header_block, exit_block));
                 self.push_var_scope();
                 for s in body {
                     self.build_stmt(s);
                 }
-                self.emit(IrInstruction::Jump { target: header_block });
+                if !self.is_current_terminated() {
+                    self.emit(IrInstruction::Jump { target: header_block });
+                }
                 self.finish_block(body_block);
                 self.pop_var_scope();
+                self.loop_stack.pop();
+
+                self.current_block_id = Some(exit_block);
             }
-            StmtKind::Break => {}
-            StmtKind::Continue => {}
+            StmtKind::Break => {
+                if let Some((_, exit_target)) = self.loop_stack.last().cloned() {
+                    self.emit(IrInstruction::Jump { target: exit_target });
+                }
+            }
+            StmtKind::Continue => {
+                if let Some((header_target, _)) = self.loop_stack.last().cloned() {
+                    self.emit(IrInstruction::Jump { target: header_target });
+                }
+            }
             StmtKind::Return(expr_opt) => {
                 let val = expr_opt.as_ref().map(|e| self.build_expr(e));
                 self.emit(IrInstruction::Return { val });
@@ -502,22 +525,7 @@ impl IrBuilder {
             }
             ExprKind::IntLiteral(v) => IrOperand::ConstantInt(*v),
             ExprKind::DecimalLiteral(v) => IrOperand::ConstantDecimal(*v),
-            ExprKind::StringLiteral(v) => {
-                let interpolated = if v.contains("${this._id}") || v.contains("${this._name}") || v.contains("${this._total}") {
-                    let mut s = v.clone();
-                    if s.contains("User") {
-                        s = s.replace("${this._id}", "1000");
-                        s = s.replace("${this._name}", "Lem");
-                    } else if s.contains("Invoice") {
-                        s = s.replace("${this._id}", "5001");
-                        s = s.replace("${this._total}", "199.99");
-                    }
-                    s
-                } else {
-                    v.clone()
-                };
-                IrOperand::ConstantString(interpolated)
-            }
+            ExprKind::StringLiteral(v) => IrOperand::ConstantString(v.clone()),
             ExprKind::BoolLiteral(v) => IrOperand::ConstantBool(*v),
             ExprKind::NullLiteral => IrOperand::Null,
             ExprKind::This => {

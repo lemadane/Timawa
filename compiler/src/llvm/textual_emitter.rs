@@ -82,7 +82,9 @@ impl TextualLlvmEmitter {
             self.output.push_str("define i32 @main(i32 %argc, i8** %argv) {\n");
             self.output.push_str("entry:\n");
             self.output.push_str("  call void @talas_runtime_init()\n");
-            self.output.push_str("  %raw_mem = call i8* @talas_alloc(i64 32, i64 8)\n");
+            self.output.push_str(&format!("  %sz_ptr = getelementptr {}, {}* null, i32 1\n", class_type, class_type));
+            self.output.push_str(&format!("  %app_sz = ptrtoint {}* %sz_ptr to i64\n", class_type));
+            self.output.push_str("  %raw_mem = call i8* @talas_alloc(i64 %app_sz, i64 8)\n");
             self.output.push_str(&format!("  %app = bitcast i8* %raw_mem to {}*\n", class_type));
             self.output.push_str(&format!("  call void @{}({}* %app)\n", target_symbol, class_type));
             self.output.push_str("  call void @talas_runtime_cleanup()\n");
@@ -204,24 +206,33 @@ impl TextualLlvmEmitter {
                     BinaryOp::Mul => if ty == &Type::Decimal { "fmul" } else { "mul" },
                     BinaryOp::Div => if ty == &Type::Decimal { "fdiv" } else { "sdiv" },
                     BinaryOp::Mod => "srem",
-                    BinaryOp::Equal => "icmp eq",
-                    BinaryOp::NotEqual => "icmp ne",
-                    BinaryOp::Less => "icmp slt",
-                    BinaryOp::LessEqual => "icmp sle",
-                    BinaryOp::Greater => "icmp sgt",
-                    BinaryOp::GreaterEqual => "icmp sge",
+                    BinaryOp::Equal => if ty == &Type::Decimal { "fcmp oeq" } else { "icmp eq" },
+                    BinaryOp::NotEqual => if ty == &Type::Decimal { "fcmp one" } else { "icmp ne" },
+                    BinaryOp::Less => if ty == &Type::Decimal { "fcmp olt" } else { "icmp slt" },
+                    BinaryOp::LessEqual => if ty == &Type::Decimal { "fcmp ole" } else { "icmp sle" },
+                    BinaryOp::Greater => if ty == &Type::Decimal { "fcmp ogt" } else { "icmp sgt" },
+                    BinaryOp::GreaterEqual => if ty == &Type::Decimal { "fcmp oge" } else { "icmp sge" },
                     BinaryOp::And => "and",
                     BinaryOp::Or => "or",
-                    _ => "add",
+                    BinaryOp::Xor => "xor",
+                    BinaryOp::Nand => "and",
+                    BinaryOp::Nor => "or",
+                    BinaryOp::Xnor => "xor",
+                    other => panic!("Unsupported binary operator lowering: {:?}", other),
                 };
                 format!("%{} = {} {} {}, {}", dest.0, op_str, ty_str, l_str, r_str)
             }
             IrInstruction::InstantiateClass { dest, class_name, args } => {
                 let class_type = format!("%{}", class_name);
                 let bitcast_reg = format!("obj_{}_{}", dest.0, self.string_counter);
+                let sz_ptr = format!("sz_ptr_{}", self.string_counter);
+                let sz_val = format!("sz_val_{}", self.string_counter);
                 self.string_counter += 1;
+
                 let mut instrs = Vec::new();
-                instrs.push(format!("%{} = call i8* @talas_alloc(i64 32, i64 8)", dest.0));
+                instrs.push(format!("%{} = getelementptr {}, {}* null, i32 1", sz_ptr, class_type, class_type));
+                instrs.push(format!("%{} = ptrtoint {}* %{} to i64", sz_val, class_type, sz_ptr));
+                instrs.push(format!("%{} = call i8* @talas_alloc(i64 %{}, i64 8)", dest.0, sz_val));
                 instrs.push(format!("%{} = bitcast i8* %{} to {}*", bitcast_reg, dest.0, class_type));
 
                 let field_types: Vec<Type> = self

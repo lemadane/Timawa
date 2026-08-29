@@ -67,6 +67,16 @@ fn test_talas_sum_classes_parsing() {
         }
     "#;
 
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty(), "Parsing sum classes failed: {:?}", parser.diagnostics);
+
+    let mut checker = TypeChecker::new();
+    let is_valid = checker.check_program(&program);
+    assert!(is_valid, "Type checking sum classes failed: {:?}", checker.diagnostics);
+}
+
 #[test]
 fn test_talas_trait_parsing() {
     let source = r#"
@@ -212,4 +222,55 @@ fn test_e2e_trait_polymorphism() {
     assert!(llvm_ir.contains("call void @User_printDetails(%User*"));
     assert!(llvm_ir.contains("call void @Invoice_printDetails(%Invoice*"));
     assert!(!llvm_ir.contains("void %"));
+}
+
+#[test]
+fn test_e2e_control_flow_and_dynamic_alloc() {
+    let source_code = r#"
+        class LargeObject(
+            long a,
+            long b,
+            long c,
+            long d,
+            long e,
+            long f,
+            long g,
+            long h
+        ) {}
+
+        class Application {
+            main() {
+                final obj = LargeObject(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L)
+                final cond = true
+
+                if (cond) {
+                    print(`Condition true`)
+                } else {
+                    print(`Condition false`)
+                }
+
+                for {
+                    break
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty(), "Parsing failed: {:?}", parser.diagnostics);
+
+    let mut checker = TypeChecker::new();
+    assert!(checker.check_program(&program), "Type checking failed: {:?}", checker.diagnostics);
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(llvm_ir.contains("ptrtoint %LargeObject*"));
+    assert!(llvm_ir.contains("br i1"));
+    assert!(!llvm_ir.contains("call i8* @talas_alloc(i64 32, i64 8)"));
 }

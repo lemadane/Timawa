@@ -348,16 +348,48 @@ impl TypeChecker {
                 for arg in args {
                     self.check_expr(cls, arg);
                 }
+                if let Some(info) = self.classes.get(class_name) {
+                    if info.fields.len() != args.len() {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!(
+                                "Class '{}' constructor expected {} arguments, got {}",
+                                class_name,
+                                info.fields.len(),
+                                args.len()
+                            ),
+                            Some(expr.span),
+                        ));
+                    }
+                } else if !self.traits.contains_key(class_name) {
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("Unknown class '{}'", class_name),
+                        Some(expr.span),
+                    ));
+                }
                 Some(Type::Class { name: class_name.clone() })
             }
-            ExprKind::Binary { op: _, left, right } => {
-                self.check_expr(cls, left);
-                self.check_expr(cls, right);
-                Some(Type::Bool)
+            ExprKind::Binary { op, left, right } => {
+                let l_ty = self.check_expr(cls, left);
+                let r_ty = self.check_expr(cls, right);
+                match op {
+                    BinaryOp::Equal
+                    | BinaryOp::NotEqual
+                    | BinaryOp::Less
+                    | BinaryOp::LessEqual
+                    | BinaryOp::Greater
+                    | BinaryOp::GreaterEqual
+                    | BinaryOp::And
+                    | BinaryOp::Nand
+                    | BinaryOp::Or
+                    | BinaryOp::Nor
+                    | BinaryOp::Xor
+                    | BinaryOp::Xnor => Some(Type::Bool),
+                    _ => l_ty.or(r_ty).or(Some(Type::Int)),
+                }
             }
-            ExprKind::Unary { operand, .. } => {
-                self.check_expr(cls, operand);
-                Some(Type::Bool)
+            ExprKind::Unary { op: _, operand } => {
+                let op_ty = self.check_expr(cls, operand);
+                op_ty.or(Some(Type::Bool))
             }
             ExprKind::AnonymousObject { fields } => {
                 let mut field_types = Vec::new();
