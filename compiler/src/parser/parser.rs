@@ -546,8 +546,48 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn is_type_specifier(&self, kind: &TokenKind) -> bool {
+        matches!(
+            kind,
+            TokenKind::IntType
+                | TokenKind::DecimalType
+                | TokenKind::ByteType
+                | TokenKind::LongType
+                | TokenKind::BoolType
+                | TokenKind::StringType
+                | TokenKind::Identifier(_)
+        )
+    }
+
     fn parse_expr_or_typed_decl_stmt(&mut self) -> Result<Stmt, ()> {
         let start_span = self.current_token.span;
+
+        if self.is_type_specifier(&self.current_token.kind) {
+            if matches!(self.peek_token.kind, TokenKind::Identifier(_)) {
+                let type_annotation = self.parse_type_spec()?;
+                if let TokenKind::Identifier(name) = self.current_token.kind.clone() {
+                    self.advance();
+                    let initializer = if self.match_token(&TokenKind::Equal) {
+                        Some(self.parse_expr(Precedence::None)?)
+                    } else {
+                        None
+                    };
+                    let end_span = self.current_token.span;
+                    self.match_token(&TokenKind::Semicolon);
+
+                    return Ok(Stmt {
+                        kind: StmtKind::LocalDecl {
+                            name,
+                            is_mutable: false,
+                            type_annotation: Some(type_annotation),
+                            initializer,
+                        },
+                        span: Span::combine(start_span, end_span),
+                    });
+                }
+            }
+        }
+
         let expr = self.parse_expr(Precedence::None)?;
         let end_span = self.current_token.span;
         self.match_token(&TokenKind::Semicolon);

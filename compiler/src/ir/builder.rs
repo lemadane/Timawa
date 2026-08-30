@@ -45,7 +45,13 @@ impl IrBuilder {
             TypeSpec::Long => Type::Long,
             TypeSpec::Bool => Type::Bool,
             TypeSpec::String => Type::String,
-            TypeSpec::Class(n) => Type::Class { name: n.clone() },
+            TypeSpec::Class(n) => {
+                if n == "void" {
+                    Type::Void
+                } else {
+                    Type::Class { name: n.clone() }
+                }
+            }
             TypeSpec::Nullable(inner) => Type::Nullable(Box::new(self.type_spec_to_type(inner))),
         }
     }
@@ -588,7 +594,7 @@ impl IrBuilder {
                     args: vec![op],
                     ret_ty: Type::Void,
                 });
-                IrOperand::ConstantInt(0)
+                IrOperand::Null
             }
             ExprKind::IntLiteral(v) => IrOperand::ConstantInt(*v),
             ExprKind::DecimalLiteral(v) => IrOperand::ConstantDecimal(*v),
@@ -653,12 +659,12 @@ impl IrBuilder {
                             ret_ty: ret_ty.clone(),
                         });
                         if ret_ty == Type::Void {
-                            IrOperand::ConstantInt(0)
+                            IrOperand::Null
                         } else {
                             IrOperand::Register(dest, ret_ty)
                         }
                     }
-                    _ => IrOperand::ConstantInt(0),
+                    _ => IrOperand::Null,
                 }
             }
             ExprKind::MemberAccess { object, member, .. } => {

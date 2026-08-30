@@ -99,12 +99,15 @@ impl TypeChecker {
                         methods.insert(method.name.clone(), (param_types, return_ty));
                     }
 
+                    let param_types = cls.primary_params.iter().map(|p| self.type_spec_to_type(&p.type_spec)).collect();
+
                     self.classes.insert(
                         cls.name.clone(),
                         ClassInfo {
                             name: cls.name.clone(),
                             fields,
                             methods,
+                            param_types,
                             min_constructor_args,
                             max_constructor_args,
                         },
@@ -253,7 +256,7 @@ impl TypeChecker {
                     if expected_ret == Type::Void {
                         if expr_opt.is_some() {
                             self.diagnostics.push(Diagnostic::error(
-                                "Cannot return a value from a method returning Void".into(),
+                                "Cannot return a value from a method returning Void".to_string(),
                                 Some(stmt.span),
                             ));
                         }
@@ -379,7 +382,8 @@ impl TypeChecker {
                     ExprKind::MemberAccess { object, member, .. } => {
                         if let ExprKind::This = &object.kind {
                             if let Some(info) = self.classes.get(&cls.name) {
-                                if let Some((_, is_mutable)) = info.fields.get(member) {
+                                let field_info = info.fields.get(member).or_else(|| info.fields.get(&format!("_{}", member)));
+                                if let Some((_, is_mutable)) = field_info {
                                     if !is_mutable {
                                         self.diagnostics.push(Diagnostic::error(
                                             format!("cannot reassign immutable field '{}'", member),
@@ -424,7 +428,7 @@ impl TypeChecker {
                         ));
                     } else {
                         for (i, (arg_ty, param_ty)) in arg_types.iter().zip(info.param_types.iter()).enumerate() {
-                            if arg_ty != param_ty && arg_ty != &Type::Void {
+                            if !self.is_assignable_to(arg_ty, param_ty) {
                                 self.diagnostics.push(Diagnostic::error(
                                     format!(
                                         "Expected '{:?}' for argument {} of '{}', but got '{:?}'",
@@ -482,6 +486,17 @@ impl TypeChecker {
         }
     }
 
+    fn is_assignable_to(&self, from: &Type, to: &Type) -> bool {
+        if from == to || from == &Type::Void {
+            return true;
+        }
+        match (from, to) {
+            (Type::Int, Type::Long) | (Type::Long, Type::Int) => true,
+            (Type::Int, Type::Decimal) | (Type::Long, Type::Decimal) => true,
+            _ => false,
+        }
+    }
+
     fn type_spec_to_type(&self, spec: &TypeSpec) -> Type {
         match spec {
             TypeSpec::Int => Type::Int,
@@ -490,7 +505,13 @@ impl TypeChecker {
             TypeSpec::Long => Type::Long,
             TypeSpec::Bool => Type::Bool,
             TypeSpec::String => Type::String,
-            TypeSpec::Class(name) => Type::Class { name: name.clone() },
+            TypeSpec::Class(name) => {
+                if name == "void" {
+                    Type::Void
+                } else {
+                    Type::Class { name: name.clone() }
+                }
+            }
             TypeSpec::Nullable(inner) => Type::Nullable(Box::new(self.type_spec_to_type(inner))),
         }
     }

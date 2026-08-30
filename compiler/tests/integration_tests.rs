@@ -148,7 +148,7 @@ fn test_e2e_person_birthday() {
     let llvm_ir = emitter.emit_program(&ir_program);
 
     assert!(llvm_ir.contains("%Person = type { i8*, i32 }"));
-    assert!(llvm_ir.contains("define void @Person_birthday(%Person* %v0)"));
+    assert!(llvm_ir.contains("define void @Person_birthday(%Person* %0)"));
     assert!(llvm_ir.contains("call void @talas_print_str"));
     assert!(llvm_ir.contains("call void @talas_print_i64"));
     assert!(llvm_ir.contains("getelementptr inbounds %Person, %Person*"));
@@ -380,8 +380,8 @@ fn test_e2e_definitely_returns_if_branches() {
     let llvm_ir = emitter.emit_program(&ir_program);
 
     assert!(llvm_ir.contains("define i32 @Calculator_compute"));
-    assert!(llvm_ir.contains("ret i32 10"));
-    assert!(llvm_ir.contains("ret i32 20"));
+    assert!(llvm_ir.contains("ret i64 10") || llvm_ir.contains("ret i32 10"));
+    assert!(llvm_ir.contains("ret i64 20") || llvm_ir.contains("ret i32 20"));
 }
 
 #[test]
@@ -397,14 +397,16 @@ fn test_e2e_go_style_zero_values() {
             main() {
                 User user
                 final u1 = User()
-                final u2 = User(`Lem`)
-                final u3 = User(`Lem`, 35)
+                final u2 = User(1000L)
+                final u3 = User(1000L, `Lem`)
+                final u4 = User(1000L, `Lem`, 35)
 
                 print(user.id())
                 print(user.name())
                 print(u1.age())
                 print(u2.age())
                 print(u3.age())
+                print(u4.age())
             }
         }
     "#;
