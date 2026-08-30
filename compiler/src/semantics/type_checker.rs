@@ -192,13 +192,18 @@ impl TypeChecker {
                     None
                 };
 
-                let var_ty = if let Some(ann) = type_annotation {
-                    self.type_spec_to_type(ann)
-                } else if let Some(ty) = init_ty {
-                    ty
-                } else {
-                    Type::Int
-                };
+                let declared_ty = type_annotation.as_ref().map(|ann| self.type_spec_to_type(ann));
+
+                if let (Some(decl_ty), Some(ity)) = (&declared_ty, &init_ty) {
+                    if !self.is_assignable_to(ity, decl_ty) {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!("Mismatched initializer type: expected '{:?}', found '{:?}'", decl_ty, ity),
+                            Some(stmt.span),
+                        ));
+                    }
+                }
+
+                let var_ty = declared_ty.or(init_ty).unwrap_or(Type::Int);
 
                 self.symbol_table.insert(Symbol {
                     name: name.clone(),
@@ -210,7 +215,15 @@ impl TypeChecker {
                 self.check_expr(cls, expr);
             }
             StmtKind::If { condition, then_branch, else_branch } => {
-                self.check_expr(cls, condition);
+                let cond_ty = self.check_expr(cls, condition);
+                if let Some(cty) = cond_ty {
+                    if cty != Type::Bool {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!("Condition must be Bool, found '{:?}'", cty),
+                            Some(condition.span),
+                        ));
+                    }
+                }
                 self.symbol_table.push_scope();
                 for s in then_branch {
                     self.check_stmt(cls, s);
@@ -242,7 +255,15 @@ impl TypeChecker {
                     });
                 }
                 if let Some(cond) = condition_or_iterable {
-                    self.check_expr(cls, cond);
+                    let cond_ty = self.check_expr(cls, cond);
+                    if let Some(cty) = cond_ty {
+                        if cty != Type::Bool {
+                            self.diagnostics.push(Diagnostic::error(
+                                format!("Loop condition must be Bool, found '{:?}'", cty),
+                                Some(cond.span),
+                            ));
+                        }
+                    }
                 }
                 for s in body {
                     self.check_stmt(cls, s);

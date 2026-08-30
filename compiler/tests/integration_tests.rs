@@ -534,3 +534,133 @@ fn test_type_checker_constructor_argument_types() {
     assert!(!is_valid, "Type checker should reject mismatched constructor argument types");
     assert!(checker.diagnostics.iter().any(|d| d.message.contains("Expected") || d.message.contains("argument")));
 }
+
+#[test]
+fn test_type_checker_variable_decl_type_enforcement() {
+    let source_code = r#"
+        class Application {
+            main() {
+                int age = `hello`
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty());
+
+    let mut checker = TypeChecker::new();
+    let is_valid = checker.check_program(&program);
+    assert!(!is_valid, "Type checker should reject mismatched variable initializer type");
+}
+
+#[test]
+fn test_type_checker_if_condition_bool_enforcement() {
+    let source_code = r#"
+        class Application {
+            main() {
+                if (123) {
+                    print(`Hello`)
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty());
+
+    let mut checker = TypeChecker::new();
+    let is_valid = checker.check_program(&program);
+    assert!(!is_valid, "Type checker should reject non-boolean if condition");
+}
+
+#[test]
+fn test_e2e_unary_not_lowering() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final a = false
+                final b = not a
+                print(b)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty());
+
+    let mut checker = TypeChecker::new();
+    assert!(checker.check_program(&program));
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(llvm_ir.contains("xor i1"));
+}
+
+#[test]
+fn test_e2e_trait_return_type_preservation() {
+    let source_code = r#"
+        trait Item {
+            string getTitle();
+        }
+
+        class Book(string title) {
+            string getTitle() {
+                return this._title
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty());
+
+    let mut checker = TypeChecker::new();
+    assert!(checker.check_program(&program));
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(llvm_ir.contains("define i8* @Book_getTitle"));
+}
+
+#[test]
+fn test_e2e_decimal_modulus_lowering() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final a = 10.5 % 3.2
+                print(a)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty());
+
+    let mut checker = TypeChecker::new();
+    assert!(checker.check_program(&program));
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(llvm_ir.contains("frem double"));
+}

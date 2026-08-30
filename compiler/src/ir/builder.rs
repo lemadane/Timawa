@@ -317,6 +317,7 @@ impl IrBuilder {
             param_info.push((p.name.clone(), p_reg, p_ty));
         }
 
+        let ret_ty = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
         self.emit(IrInstruction::Return { val: None });
         self.finish_block(entry_block);
 
@@ -325,7 +326,7 @@ impl IrBuilder {
             name: method.name.clone(),
             receiver: (receiver_reg, this_ty),
             params: ir_params,
-            return_type: Type::Void,
+            return_type: ret_ty,
             blocks: std::mem::take(&mut self.blocks),
         }
     }
@@ -756,19 +757,34 @@ impl IrBuilder {
                 });
                 IrOperand::Register(dest, res_ty)
             }
-            ExprKind::Unary { operand, .. } => {
+            ExprKind::Unary { op, operand } => {
                 let op_val = self.build_expr(operand);
                 let dest = self.fresh_reg();
                 let ty = op_val.get_type();
-                self.emit(IrInstruction::Binary {
-                    dest,
-                    op: BinaryOp::Sub,
-                    left: IrOperand::ConstantInt(0),
-                    right: op_val,
-                    operand_ty: ty.clone(),
-                    result_ty: ty.clone(),
-                });
-                IrOperand::Register(dest, ty)
+                match op {
+                    UnaryOp::Not => {
+                        self.emit(IrInstruction::Binary {
+                            dest,
+                            op: BinaryOp::Xor,
+                            left: op_val,
+                            right: IrOperand::ConstantBool(true),
+                            operand_ty: Type::Bool,
+                            result_ty: Type::Bool,
+                        });
+                        IrOperand::Register(dest, Type::Bool)
+                    }
+                    _ => {
+                        self.emit(IrInstruction::Binary {
+                            dest,
+                            op: BinaryOp::Sub,
+                            left: IrOperand::ConstantInt(0),
+                            right: op_val,
+                            operand_ty: ty.clone(),
+                            result_ty: ty.clone(),
+                        });
+                        IrOperand::Register(dest, ty)
+                    }
+                }
             }
             unsupported => {
                 self.diagnostics.push(Diagnostic::error(

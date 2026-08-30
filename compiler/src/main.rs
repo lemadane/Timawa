@@ -172,11 +172,21 @@ fn main() {
         "emit-ir" => {
             let mut builder = IrBuilder::new();
             let ir_program = builder.build_program(&program);
+
+            if !builder.diagnostics.is_empty() {
+                DiagnosticEmitter::emit(&builder.diagnostics, &source_code);
+                process::exit(1);
+            }
             println!("{:#?}", ir_program);
         }
         "emit-llvm" => {
             let mut builder = IrBuilder::new();
             let ir_program = builder.build_program(&program);
+
+            if !builder.diagnostics.is_empty() {
+                DiagnosticEmitter::emit(&builder.diagnostics, &source_code);
+                process::exit(1);
+            }
 
             let mut emitter = TextualLlvmEmitter::new();
             let llvm_ir = emitter.emit_program(&ir_program);
@@ -194,6 +204,11 @@ fn main() {
         "build" => {
             let mut builder = IrBuilder::new();
             let ir_program = builder.build_program(&program);
+
+            if !builder.diagnostics.is_empty() {
+                DiagnosticEmitter::emit(&builder.diagnostics, &source_code);
+                process::exit(1);
+            }
 
             let mut emitter = TextualLlvmEmitter::new();
             let llvm_ir = emitter.emit_program(&ir_program);
@@ -232,6 +247,11 @@ fn main() {
         "run" => {
             let mut builder = IrBuilder::new();
             let ir_program = builder.build_program(&program);
+
+            if !builder.diagnostics.is_empty() {
+                DiagnosticEmitter::emit(&builder.diagnostics, &source_code);
+                process::exit(1);
+            }
 
             let mut emitter = TextualLlvmEmitter::new();
             let llvm_ir = emitter.emit_program(&ir_program);

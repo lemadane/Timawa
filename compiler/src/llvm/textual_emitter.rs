@@ -239,7 +239,7 @@ impl TextualLlvmEmitter {
                             BinaryOp::Sub => if operand_ty == &Type::Decimal { "fsub" } else { "sub" },
                             BinaryOp::Mul => if operand_ty == &Type::Decimal { "fmul" } else { "mul" },
                             BinaryOp::Div => if operand_ty == &Type::Decimal { "fdiv" } else { "sdiv" },
-                            BinaryOp::Mod => "srem",
+                            BinaryOp::Mod => if operand_ty == &Type::Decimal { "frem" } else { "srem" },
                             BinaryOp::Equal => if operand_ty == &Type::Decimal { "fcmp oeq" } else { "icmp eq" },
                             BinaryOp::NotEqual => if operand_ty == &Type::Decimal { "fcmp one" } else { "icmp ne" },
                             BinaryOp::Less => if operand_ty == &Type::Decimal { "fcmp olt" } else { "icmp slt" },
