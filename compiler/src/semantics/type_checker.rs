@@ -26,6 +26,7 @@ pub struct TypeChecker {
     traits: HashMap<String, TraitInfo>,
     current_class: Option<String>,
     current_return_type: Option<Type>,
+    loop_depth: usize,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -37,6 +38,7 @@ impl TypeChecker {
             traits: HashMap::new(),
             current_class: None,
             current_return_type: None,
+            loop_depth: 0,
             diagnostics: Vec::new(),
         };
         checker.register_builtins();
@@ -265,13 +267,29 @@ impl TypeChecker {
                         }
                     }
                 }
+                self.loop_depth += 1;
                 for s in body {
                     self.check_stmt(cls, s);
                 }
+                self.loop_depth -= 1;
                 self.symbol_table.pop_scope();
             }
-            StmtKind::Break => {}
-            StmtKind::Continue => {}
+            StmtKind::Break => {
+                if self.loop_depth == 0 {
+                    self.diagnostics.push(Diagnostic::error(
+                        "'break' can only be used inside a loop".to_string(),
+                        Some(stmt.span),
+                    ));
+                }
+            }
+            StmtKind::Continue => {
+                if self.loop_depth == 0 {
+                    self.diagnostics.push(Diagnostic::error(
+                        "'continue' can only be used inside a loop".to_string(),
+                        Some(stmt.span),
+                    ));
+                }
+            }
             StmtKind::Return(expr_opt) => {
                 if let Some(expected_ret) = self.current_return_type.clone() {
                     if expected_ret == Type::Void {
@@ -443,7 +461,12 @@ impl TypeChecker {
                             }
                         }
                     }
-                    _ => {}
+                    _ => {
+                        self.diagnostics.push(Diagnostic::error(
+                            "left side of assignment is not assignable".to_string(),
+                            Some(target.span),
+                        ));
+                    }
                 }
                 Some(val_ty)
             }
@@ -518,9 +541,32 @@ impl TypeChecker {
                     _ => l_ty.or(r_ty).or(Some(Type::Int)),
                 }
             }
-            ExprKind::Unary { op: _, operand } => {
+            ExprKind::Unary { op, operand } => {
                 let op_ty = self.check_expr(cls, operand);
-                op_ty.or(Some(Type::Bool))
+                if let Some(ty) = &op_ty {
+                    match op {
+                        UnaryOp::Not => {
+                            if ty != &Type::Bool {
+                                self.diagnostics.push(Diagnostic::error(
+                                    format!("Unary 'not' operator requires Bool operand, found '{:?}'", ty),
+                                    Some(expr.span),
+                                ));
+                            }
+                            Some(Type::Bool)
+                        }
+                        UnaryOp::Neg => {
+                            if ty != &Type::Int && ty != &Type::Long && ty != &Type::Decimal {
+                                self.diagnostics.push(Diagnostic::error(
+                                    format!("Unary '-' operator requires numeric operand, found '{:?}'", ty),
+                                    Some(expr.span),
+                                ));
+                            }
+                            Some(ty.clone())
+                        }
+                    }
+                } else {
+                    Some(Type::Bool)
+                }
             }
             ExprKind::AnonymousObject { fields } => {
                 let mut field_types = Vec::new();

@@ -162,7 +162,12 @@ impl IrBuilder {
                 Item::Trait(tr) => {
                     for method in &tr.methods {
                         let ret_ty = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
-                        self.method_return_types.insert((tr.name.clone(), method.name.clone()), ret_ty);
+                        self.method_return_types.insert((tr.name.clone(), method.name.clone()), ret_ty.clone());
+                        for cls in &concrete_classes {
+                            self.method_return_types
+                                .entry((cls.name.clone(), method.name.clone()))
+                                .or_insert_with(|| ret_ty.clone());
+                        }
                     }
                 }
                 _ => {}
@@ -676,13 +681,13 @@ impl IrBuilder {
                             .method_return_types
                             .get(&(class_name.clone(), target_method.clone()))
                             .cloned()
-                            .unwrap_or_else(|| {
-                                if member.starts_with("get") || member == "getHeader" || member == "name" {
-                                    Type::String
-                                } else {
-                                    Type::Void
-                                }
-                            });
+                            .or_else(|| {
+                                self.method_return_types
+                                    .iter()
+                                    .find(|((_, m), _)| m == &target_method || m == member)
+                                    .map(|(_, ty)| ty.clone())
+                            })
+                            .unwrap_or(Type::Void);
 
                         let dest_opt = if ret_ty == Type::Void { None } else { Some(dest) };
                         self.emit(IrInstruction::CallMethod {
@@ -699,10 +704,22 @@ impl IrBuilder {
                             IrOperand::Register(dest, ret_ty)
                         }
                     }
-                    _ => IrOperand::Null,
+                    _ => {
+                        self.diagnostics.push(Diagnostic::error(
+                            "direct function calls are not supported",
+                            Some(expr.span),
+                        ));
+                        IrOperand::Null
+                    }
                 }
             }
-            ExprKind::MemberAccess { object, member, .. } => {
+            ExprKind::MemberAccess { object, member, is_optional } => {
+                if *is_optional {
+                    self.diagnostics.push(Diagnostic::error(
+                        "optional member access '?.' is not yet supported by native code generation",
+                        Some(expr.span),
+                    ));
+                }
                 let obj_op = self.build_expr(object);
                 let dest = self.fresh_reg();
                 let class_name = match obj_op.get_type() {
@@ -720,10 +737,18 @@ impl IrBuilder {
                         });
                         IrOperand::Register(dest, field_ty)
                     } else {
-                        IrOperand::ConstantInt(0)
+                        self.diagnostics.push(Diagnostic::error(
+                            format!("cannot lower member access '{}'", member),
+                            Some(expr.span),
+                        ));
+                        IrOperand::Null
                     }
                 } else {
-                    IrOperand::ConstantInt(0)
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("cannot lower member access '{}'", member),
+                        Some(expr.span),
+                    ));
+                    IrOperand::Null
                 }
             }
             ExprKind::Assign { target, value } => {
@@ -755,14 +780,19 @@ impl IrBuilder {
                             });
                         }
                     }
-                    _ => {}
+                    _ => {
+                        self.diagnostics.push(Diagnostic::error(
+                            "left side of assignment is not assignable",
+                            Some(expr.span),
+                        ));
+                    }
                 }
                 val_op
             }
             ExprKind::Binary { op, left, right } => {
                 if op == &BinaryOp::Range {
                     self.diagnostics.push(Diagnostic::error(
-                        "Range operator '..' is not supported yet",
+                        "range expressions are not yet supported by native code generation",
                         Some(expr.span),
                     ));
                     return IrOperand::ConstantInt(0);

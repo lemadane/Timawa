@@ -1028,3 +1028,323 @@ fn test_e2e_unsupported_binary_never_panics_backend() {
         "LLVM emitter panicked on a parser-supported binary operator"
     );
 }
+
+#[test]
+fn test_e2e_trait_declared_return_types_preserved_across_all_types() {
+    let source_code = r#"
+        trait DataSupplier {
+            int count();
+            long timestamp();
+            decimal ratio();
+            bool isValid();
+            string code();
+        }
+
+        class Service(
+            int _count,
+            long _timestamp,
+            decimal _ratio,
+            bool _isValid,
+            string _code
+        ) {
+            int count() {
+                return this._count
+            }
+            long timestamp() {
+                return this._timestamp
+            }
+            decimal ratio() {
+                return this._ratio
+            }
+            bool isValid() {
+                return this._isValid
+            }
+            string code() {
+                return this._code
+            }
+        }
+
+        class Application {
+            main() {
+                final s = Service(42, 1000L, 3.14, true, `OK`)
+                print(s.count())
+                print(s.timestamp())
+                print(s.ratio())
+                print(s.isValid())
+                print(s.code())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building failed: {:?}",
+        builder.diagnostics
+    );
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    // Verify declared return types on functions
+    assert!(
+        llvm_ir.contains("define i32 @Service_count"),
+        "int return type missing:\n{}",
+        llvm_ir
+    );
+    assert!(
+        llvm_ir.contains("define i64 @Service_timestamp"),
+        "long return type missing:\n{}",
+        llvm_ir
+    );
+    assert!(
+        llvm_ir.contains("define double @Service_ratio"),
+        "decimal return type missing:\n{}",
+        llvm_ir
+    );
+    assert!(
+        llvm_ir.contains("define i1 @Service_isValid"),
+        "bool return type missing:\n{}",
+        llvm_ir
+    );
+    assert!(
+        llvm_ir.contains("define i8* @Service_code"),
+        "string return type missing:\n{}",
+        llvm_ir
+    );
+}
+
+#[test]
+fn test_e2e_range_expression_emits_graceful_diagnostic() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final numbers = 1 .. 10
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    let mut checker = TypeChecker::new();
+    let _checked = checker.check_program(&program);
+
+    let mut builder = IrBuilder::new();
+    let _ir_program = builder.build_program(&program);
+
+    assert!(
+        !parser.diagnostics.is_empty() || !checker.diagnostics.is_empty() || !builder.diagnostics.is_empty(),
+        "Expected range expression '..' to produce diagnostic error"
+    );
+}
+
+#[test]
+fn test_e2e_bare_unsupported_function_call_emits_diagnostic() {
+    let source_code = r#"
+        class Application {
+            main() {
+                doSomething()
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    let mut checker = TypeChecker::new();
+    let _checked = checker.check_program(&program);
+
+    let mut builder = IrBuilder::new();
+    let _ir_program = builder.build_program(&program);
+
+    assert!(
+        !parser.diagnostics.is_empty() || !checker.diagnostics.is_empty() || !builder.diagnostics.is_empty(),
+        "Expected bare unsupported call 'doSomething()' to produce diagnostic error"
+    );
+}
+
+#[test]
+fn test_e2e_unsupported_member_access_emits_diagnostic() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final x = 42
+                print(x.invalid_member)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    let mut checker = TypeChecker::new();
+    let _checked = checker.check_program(&program);
+
+    let mut builder = IrBuilder::new();
+    let _ir_program = builder.build_program(&program);
+
+    assert!(
+        !parser.diagnostics.is_empty() || !checker.diagnostics.is_empty() || !builder.diagnostics.is_empty(),
+        "Expected unresolvable member access to produce diagnostic error"
+    );
+}
+
+#[test]
+fn test_e2e_invalid_assignment_target_emits_diagnostic() {
+    let source_code = r#"
+        class Application {
+            main() {
+                (10 + 20) = 100
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    let mut checker = TypeChecker::new();
+    let _checked = checker.check_program(&program);
+
+    let mut builder = IrBuilder::new();
+    let _ir_program = builder.build_program(&program);
+
+    assert!(
+        !parser.diagnostics.is_empty() || !checker.diagnostics.is_empty() || !builder.diagnostics.is_empty(),
+        "Expected invalid assignment target '(10 + 20) = 100' to produce diagnostic error"
+    );
+}
+
+#[test]
+fn test_e2e_optional_chaining_emits_diagnostic_until_supported() {
+    let source_code = r#"
+        class User(var string name) {}
+
+        class Application {
+            main() {
+                final u = User(`Alice`)
+                print(u?.name)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    let mut checker = TypeChecker::new();
+    let _checked = checker.check_program(&program);
+
+    let mut builder = IrBuilder::new();
+    let _ir_program = builder.build_program(&program);
+
+    assert!(
+        !parser.diagnostics.is_empty() || !checker.diagnostics.is_empty() || !builder.diagnostics.is_empty(),
+        "Expected optional member access '?.' to produce diagnostic error until supported"
+    );
+}
+
+#[test]
+fn test_e2e_break_and_continue_outside_loop_emits_diagnostic() {
+    let break_source = r#"
+        class Application {
+            main() {
+                break
+            }
+        }
+    "#;
+
+    let lexer1 = Lexer::new(break_source);
+    let mut parser1 = Parser::new(lexer1);
+    let program1 = parser1.parse_program();
+    let mut checker1 = TypeChecker::new();
+    checker1.check_program(&program1);
+
+    assert!(
+        !checker1.diagnostics.is_empty(),
+        "Expected 'break' outside loop to produce diagnostic error"
+    );
+
+    let continue_source = r#"
+        class Application {
+            main() {
+                continue
+            }
+        }
+    "#;
+
+    let lexer2 = Lexer::new(continue_source);
+    let mut parser2 = Parser::new(lexer2);
+    let program2 = parser2.parse_program();
+    let mut checker2 = TypeChecker::new();
+    checker2.check_program(&program2);
+
+    assert!(
+        !checker2.diagnostics.is_empty(),
+        "Expected 'continue' outside loop to produce diagnostic error"
+    );
+}
+
+#[test]
+fn test_e2e_invalid_unary_operands_emit_diagnostic() {
+    let not_int_source = r#"
+        class Application {
+            main() {
+                final x = not 123
+            }
+        }
+    "#;
+
+    let lexer1 = Lexer::new(not_int_source);
+    let mut parser1 = Parser::new(lexer1);
+    let program1 = parser1.parse_program();
+    let mut checker1 = TypeChecker::new();
+    checker1.check_program(&program1);
+
+    assert!(
+        !checker1.diagnostics.is_empty(),
+        "Expected 'not 123' to produce diagnostic error"
+    );
+
+    let neg_bool_source = r#"
+        class Application {
+            main() {
+                final y = -true
+            }
+        }
+    "#;
+
+    let lexer2 = Lexer::new(neg_bool_source);
+    let mut parser2 = Parser::new(lexer2);
+    let program2 = parser2.parse_program();
+    let mut checker2 = TypeChecker::new();
+    checker2.check_program(&program2);
+
+    assert!(
+        !checker2.diagnostics.is_empty(),
+        "Expected '-true' to produce diagnostic error"
+    );
+}
