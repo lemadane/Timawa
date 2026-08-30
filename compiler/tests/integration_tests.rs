@@ -314,7 +314,7 @@ fn test_e2e_nested_cfg_and_logical_ops() {
     let mut emitter = TextualLlvmEmitter::new();
     let llvm_ir = emitter.emit_program(&ir_program);
 
-    assert!(llvm_ir.contains("icmp sgt i64 10, 5"));
+    assert!(llvm_ir.contains("icmp sgt i32 10, 5") || llvm_ir.contains("icmp sgt i64 10, 5"));
     assert!(llvm_ir.contains("and i1"));
     assert!(llvm_ir.contains("xor i1 %tmp_nand_"));
     assert!(!llvm_ir.contains("UNREACHABLE DEAD CODE"));
@@ -663,4 +663,368 @@ fn test_e2e_decimal_modulus_lowering() {
     let llvm_ir = emitter.emit_program(&ir_program);
 
     assert!(llvm_ir.contains("frem double"));
+}
+
+#[test]
+fn test_e2e_int_and_long_keep_distinct_storage_types() {
+    let source_code = r#"
+        class Application {
+            main() {
+                int small = 10
+                long big = 10L
+
+                print(small)
+                print(big)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building failed: {:?}",
+        builder.diagnostics
+    );
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    // int must really be i32.
+    assert!(
+        llvm_ir.contains("store i32 10"),
+        "int literal was not lowered as i32:\n{}",
+        llvm_ir
+    );
+
+    // long must really be i64.
+    assert!(
+        llvm_ir.contains("store i64 10"),
+        "long literal was not lowered as i64:\n{}",
+        llvm_ir
+    );
+}
+
+#[test]
+fn test_e2e_reject_wrong_field_assignment_type() {
+    let source_code = r#"
+        class User(var int age) {
+            corrupt() {
+                this._age = `not an integer`
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    let valid = checker.check_program(&program);
+
+    assert!(
+        !valid,
+        "Talas must reject assigning string to int field"
+    );
+
+    assert!(
+        !checker.diagnostics.is_empty(),
+        "Expected assignment type diagnostic"
+    );
+}
+
+#[test]
+fn test_e2e_reject_wrong_method_argument_type() {
+    let source_code = r#"
+        class Greeter {
+            greet(int times) {
+                print(`Hello`)
+            }
+        }
+
+        class Application {
+            main() {
+                final greeter = Greeter()
+
+                greeter.greet(`wrong`)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    let valid = checker.check_program(&program);
+
+    assert!(
+        !valid,
+        "Method expects int but string argument was accepted"
+    );
+
+    assert!(
+        !checker.diagnostics.is_empty(),
+        "Expected method argument type diagnostic"
+    );
+}
+
+#[test]
+fn test_e2e_application_constructor_defaults_are_initialized() {
+    let source_code = r#"
+        class Application(
+            var int port = 8080
+        ) {
+            main() {
+                print(this.port())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building failed: {:?}",
+        builder.diagnostics
+    );
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    // Synthetic main must initialize Application.port.
+    assert!(
+        llvm_ir.contains("store i32 8080"),
+        "Application default value was never initialized:\n{}",
+        llvm_ir
+    );
+}
+
+#[test]
+fn test_e2e_abstract_trait_nonvoid_method_never_returns_void() {
+    let source_code = r#"
+        trait Item {
+            string title();
+        }
+
+        class Application {
+            main() {}
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    if let Some(start) = llvm_ir.find("define i8* @Item_title") {
+        let remaining = &llvm_ir[start..];
+        let end = remaining.find("\n}").unwrap_or(remaining.len());
+        let trait_function = &remaining[..end];
+
+        assert!(
+            !trait_function.contains("ret void"),
+            "Non-void trait method generated ret void:\n{}",
+            trait_function
+        );
+    } else {
+        assert!(
+            llvm_ir.contains("declare i8* @Item_title"),
+            "Expected a valid abstract trait declaration:\n{}",
+            llvm_ir
+        );
+    }
+}
+
+#[test]
+fn test_e2e_reject_invalid_binary_operand_types() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final bad = 10 and 20
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    let valid = checker.check_program(&program);
+
+    assert!(
+        !valid,
+        "'and' must require bool operands"
+    );
+
+    assert!(
+        !checker.diagnostics.is_empty(),
+        "Expected invalid binary operand diagnostic"
+    );
+}
+
+#[test]
+fn test_e2e_string_interpolation_is_not_literal_text() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final name = `Lem`
+
+                print(`Hello ${name}`)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    // "${name}" must have been parsed/evaluated,
+    // not embedded in the final constant.
+    assert!(
+        !llvm_ir.contains("${name}"),
+        "Interpolation was emitted as literal text:\n{}",
+        llvm_ir
+    );
+}
+
+#[test]
+fn test_e2e_unsupported_binary_never_panics_backend() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final range = 1 .. 10
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Unexpected semantic failure: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    // If Range is not implemented yet, a builder diagnostic is valid.
+    if !builder.diagnostics.is_empty() {
+        return;
+    }
+
+    // If the builder accepts it, the LLVM backend must not panic.
+    let result = std::panic::catch_unwind(
+        std::panic::AssertUnwindSafe(|| {
+            let mut emitter = TextualLlvmEmitter::new();
+            emitter.emit_program(&ir_program)
+        })
+    );
+
+    assert!(
+        result.is_ok(),
+        "LLVM emitter panicked on a parser-supported binary operator"
+    );
 }

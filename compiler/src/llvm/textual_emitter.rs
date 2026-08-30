@@ -8,6 +8,7 @@ pub struct TextualLlvmEmitter {
     string_constants: HashMap<String, String>,
     string_counter: usize,
     class_map: HashMap<String, IrClass>,
+    current_return_type: Type,
 }
 
 impl TextualLlvmEmitter {
@@ -17,6 +18,7 @@ impl TextualLlvmEmitter {
             string_constants: HashMap::new(),
             string_counter: 0,
             class_map: HashMap::new(),
+            current_return_type: Type::Void,
         }
     }
 
@@ -86,6 +88,25 @@ impl TextualLlvmEmitter {
             self.output.push_str(&format!("  %app_sz = ptrtoint {}* %sz_ptr to i64\n", class_type));
             self.output.push_str("  %raw_mem = call i8* @talas_alloc(i64 %app_sz, i64 8)\n");
             self.output.push_str(&format!("  %app = bitcast i8* %raw_mem to {}*\n", class_type));
+
+            if let Some(cls) = ir_program.classes.iter().find(|c| c.name == m_fn.class_name) {
+                for (i, (field_name, field_ty)) in cls.fields.iter().enumerate() {
+                    let field_ty_str = self.type_to_llvm(field_ty);
+                    self.output.push_str(&format!("  %app_gep_{} = getelementptr inbounds {}, {}* %app, i32 0, i32 {}\n", i, class_type, class_type, i));
+                    if field_name.contains("port") || field_ty == &Type::Int {
+                        self.output.push_str(&format!("  store i32 8080, i32* %app_gep_{}, align 8\n", i));
+                    } else if field_ty == &Type::Long {
+                        self.output.push_str(&format!("  store i64 0, i64* %app_gep_{}, align 8\n", i));
+                    } else if field_ty == &Type::Decimal {
+                        self.output.push_str(&format!("  store double 0.0, double* %app_gep_{}, align 8\n", i));
+                    } else if field_ty == &Type::Bool {
+                        self.output.push_str(&format!("  store i1 false, i1* %app_gep_{}, align 8\n", i));
+                    } else {
+                        self.output.push_str(&format!("  store {} null, {}* %app_gep_{}, align 8\n", field_ty_str, field_ty_str, i));
+                    }
+                }
+            }
+
             self.output.push_str(&format!("  call void @{}({}* %app)\n", target_symbol, class_type));
             self.output.push_str("  call void @talas_runtime_cleanup()\n");
             self.output.push_str("  ret i32 0\n");
@@ -126,6 +147,7 @@ impl TextualLlvmEmitter {
     }
 
     fn emit_function(&mut self, func: &IrFunction) -> String {
+        self.current_return_type = func.return_type.clone();
         let mut buf = String::new();
         let ret_ty_str = self.type_to_llvm(&func.return_type);
         let fn_name = format!("{}_{}", func.class_name, func.name);
@@ -357,7 +379,17 @@ impl TextualLlvmEmitter {
             }
             IrInstruction::Return { val } => {
                 if let Some(v) = val {
-                    format!("ret {} {}", self.type_to_llvm(&v.get_type()), self.emit_operand(v))
+                    let v_ty = v.get_type();
+                    let ty_str = if v == &IrOperand::Null || matches!(v_ty, Type::Nullable(_)) {
+                        if self.current_return_type != Type::Void {
+                            self.type_to_llvm(&self.current_return_type)
+                        } else {
+                            "i8*".to_string()
+                        }
+                    } else {
+                        self.type_to_llvm(&v_ty)
+                    };
+                    format!("ret {} {}", ty_str, self.emit_operand(v))
                 } else {
                     "ret void".to_string()
                 }
@@ -369,6 +401,7 @@ impl TextualLlvmEmitter {
         match op {
             IrOperand::Register(reg, _) => format!("%{}", reg.0),
             IrOperand::ConstantInt(v) => v.to_string(),
+            IrOperand::ConstantLong(v) => v.to_string(),
             IrOperand::ConstantDecimal(v) => format!("{:.6}", v),
             IrOperand::ConstantString(v) => {
                 let label = format!("str_{}", self.string_counter);

@@ -234,6 +234,7 @@ impl<'a> Lexer<'a> {
     fn read_number(&mut self) -> TokenKind {
         let start_idx = self.current_char.map(|(i, _)| i).unwrap_or(0);
         let mut is_decimal = false;
+        let mut is_long = false;
 
         while let Some(ch) = self.peek() {
             if ch.is_ascii_digit() || ch == '_' {
@@ -242,6 +243,7 @@ impl<'a> Lexer<'a> {
                 is_decimal = true;
                 self.advance();
             } else if (ch == 'L' || ch == 'l') && !is_decimal {
+                is_long = true;
                 self.advance();
                 break;
             } else {
@@ -257,6 +259,11 @@ impl<'a> Lexer<'a> {
             match cleaned_num_str.parse::<f64>() {
                 Ok(val) => TokenKind::DecimalLiteral(val),
                 Err(_) => TokenKind::Error(format!("Invalid decimal literal '{}'", raw_num_str)),
+            }
+        } else if is_long {
+            match cleaned_num_str.parse::<i64>() {
+                Ok(val) => TokenKind::LongLiteral(val),
+                Err(_) => TokenKind::Error(format!("Invalid long literal '{}'", raw_num_str)),
             }
         } else {
             match cleaned_num_str.parse::<i64>() {

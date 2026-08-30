@@ -753,6 +753,10 @@ impl<'a> Parser<'a> {
                 kind: ExprKind::IntLiteral(val),
                 span: tok.span,
             }),
+            TokenKind::LongLiteral(val) => Ok(Expr {
+                kind: ExprKind::LongLiteral(val),
+                span: tok.span,
+            }),
             TokenKind::DecimalLiteral(val) => Ok(Expr {
                 kind: ExprKind::DecimalLiteral(val),
                 span: tok.span,

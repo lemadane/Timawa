@@ -23,6 +23,7 @@ impl fmt::Display for BlockId {
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrOperand {
     ConstantInt(i64),
+    ConstantLong(i64),
     ConstantDecimal(f64),
     ConstantBool(bool),
     ConstantString(String),
@@ -33,7 +34,8 @@ pub enum IrOperand {
 impl IrOperand {
     pub fn get_type(&self) -> Type {
         match self {
-            IrOperand::ConstantInt(_) => Type::Long,
+            IrOperand::ConstantInt(_) => Type::Int,
+            IrOperand::ConstantLong(_) => Type::Long,
             IrOperand::ConstantDecimal(_) => Type::Decimal,
             IrOperand::ConstantBool(_) => Type::Bool,
             IrOperand::ConstantString(_) => Type::String,

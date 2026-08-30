@@ -314,6 +314,7 @@ impl TypeChecker {
                 Some(Type::Void)
             }
             ExprKind::IntLiteral(_) => Some(Type::Int),
+            ExprKind::LongLiteral(_) => Some(Type::Long),
             ExprKind::DecimalLiteral(_) => Some(Type::Decimal),
             ExprKind::StringLiteral(_) => Some(Type::String),
             ExprKind::BoolLiteral(_) => Some(Type::Bool),
@@ -346,7 +347,8 @@ impl TypeChecker {
                 match obj_ty {
                     Type::Class { name } => {
                         if let Some(info) = self.classes.get(&name) {
-                            if let Some((field_ty, _)) = info.fields.get(member) {
+                            let field_name = if member.starts_with('_') { member.clone() } else { format!("_{}", member) };
+                            if let Some((field_ty, _)) = info.fields.get(&field_name).or_else(|| info.fields.get(member)) {
                                 return Some(field_ty.clone());
                             }
                             if let Some((_, ret_ty)) = info.methods.get(member) {
@@ -368,27 +370,28 @@ impl TypeChecker {
                 }
             }
             ExprKind::Call { callee, args } => {
+                let mut arg_types = Vec::new();
                 for arg in args {
-                    self.check_expr(cls, arg);
+                    if let Some(t) = self.check_expr(cls, arg) {
+                        arg_types.push(t);
+                    }
                 }
                 match &callee.kind {
                     ExprKind::MemberAccess { object, member, .. } => {
-                        if let ExprKind::Identifier(class_name) = &object.kind {
-                            if let Some(info) = self.classes.get(class_name) {
-                                if let Some((_, ret_ty)) = info.methods.get(member) {
-                                    return Some(ret_ty.clone());
-                                }
-                            }
-                            if let Some(tr) = self.traits.get(class_name) {
-                                if let Some((_, ret_ty)) = tr.methods.get(member) {
-                                    return Some(ret_ty.clone());
-                                }
-                            }
-                        }
-                        if let ExprKind::This = &object.kind {
-                            if let Some(info) = self.classes.get(&cls.name) {
-                                if let Some((_, ret_ty)) = info.methods.get(member) {
-                                    return Some(ret_ty.clone());
+                        if let Some(obj_ty) = self.check_expr(cls, object) {
+                            if let Type::Class { ref name } = obj_ty {
+                                if let Some(info) = self.classes.get(name).cloned() {
+                                    if let Some((param_types, ret_ty)) = info.methods.get(member).cloned() {
+                                        for (i, (arg_ty, param_ty)) in arg_types.iter().zip(param_types.iter()).enumerate() {
+                                            if !self.is_assignable_to(arg_ty, param_ty) {
+                                                self.diagnostics.push(Diagnostic::error(
+                                                    format!("Expected '{:?}' for argument {} of method '{}', but got '{:?}'", param_ty, i + 1, member, arg_ty),
+                                                    Some(expr.span),
+                                                ));
+                                            }
+                                        }
+                                        return Some(ret_ty);
+                                    }
                                 }
                             }
                         }
@@ -401,16 +404,25 @@ impl TypeChecker {
                 let val_ty = self.check_expr(cls, value)?;
                 match &target.kind {
                     ExprKind::MemberAccess { object, member, .. } => {
-                        if let ExprKind::This = &object.kind {
-                            if let Some(info) = self.classes.get(&cls.name) {
-                                let field_info = info.fields.get(member).or_else(|| info.fields.get(&format!("_{}", member)));
-                                if let Some((_, is_mutable)) = field_info {
-                                    if !is_mutable {
-                                        self.diagnostics.push(Diagnostic::error(
-                                            format!("cannot reassign immutable field '{}'", member),
-                                            Some(target.span),
-                                        ));
-                                    }
+                        let obj_ty = self.check_expr(cls, object);
+                        let target_cls = match obj_ty {
+                            Some(Type::Class { name }) => name,
+                            _ => cls.name.clone(),
+                        };
+                        if let Some(info) = self.classes.get(&target_cls) {
+                            let field_info = info.fields.get(member).or_else(|| info.fields.get(&format!("_{}", member)));
+                            if let Some((field_ty, is_mutable)) = field_info {
+                                if !is_mutable {
+                                    self.diagnostics.push(Diagnostic::error(
+                                        format!("cannot reassign immutable field '{}'", member),
+                                        Some(target.span),
+                                    ));
+                                }
+                                if !self.is_assignable_to(&val_ty, field_ty) {
+                                    self.diagnostics.push(Diagnostic::error(
+                                        format!("Cannot assign '{:?}' to field '{}' of type '{:?}'", val_ty, member, field_ty),
+                                        Some(target.span),
+                                    ));
                                 }
                             }
                         }
@@ -420,6 +432,12 @@ impl TypeChecker {
                             if !sym.is_mutable {
                                 self.diagnostics.push(Diagnostic::error(
                                     format!("cannot reassign immutable variable '{}'", name),
+                                    Some(target.span),
+                                ));
+                            }
+                            if !self.is_assignable_to(&val_ty, &sym.ty) {
+                                self.diagnostics.push(Diagnostic::error(
+                                    format!("Cannot assign '{:?}' to variable '{}' of type '{:?}'", val_ty, name, sym.ty),
                                     Some(target.span),
                                 ));
                             }
@@ -475,18 +493,28 @@ impl TypeChecker {
                 let l_ty = self.check_expr(cls, left);
                 let r_ty = self.check_expr(cls, right);
                 match op {
+                    BinaryOp::And
+                    | BinaryOp::Nand
+                    | BinaryOp::Or
+                    | BinaryOp::Nor
+                    | BinaryOp::Xor
+                    | BinaryOp::Xnor => {
+                        if let (Some(lt), Some(rt)) = (&l_ty, &r_ty) {
+                            if lt != &Type::Bool || rt != &Type::Bool {
+                                self.diagnostics.push(Diagnostic::error(
+                                    format!("Operator '{:?}' requires Bool operands, found '{:?}' and '{:?}'", op, lt, rt),
+                                    Some(expr.span),
+                                ));
+                            }
+                        }
+                        Some(Type::Bool)
+                    }
                     BinaryOp::Equal
                     | BinaryOp::NotEqual
                     | BinaryOp::Less
                     | BinaryOp::LessEqual
                     | BinaryOp::Greater
-                    | BinaryOp::GreaterEqual
-                    | BinaryOp::And
-                    | BinaryOp::Nand
-                    | BinaryOp::Or
-                    | BinaryOp::Nor
-                    | BinaryOp::Xor
-                    | BinaryOp::Xnor => Some(Type::Bool),
+                    | BinaryOp::GreaterEqual => Some(Type::Bool),
                     _ => l_ty.or(r_ty).or(Some(Type::Int)),
                 }
             }
@@ -514,6 +542,9 @@ impl TypeChecker {
         match (from, to) {
             (Type::Int, Type::Long) | (Type::Long, Type::Int) => true,
             (Type::Int, Type::Decimal) | (Type::Long, Type::Decimal) => true,
+            (Type::Class { name: from_name }, Type::Class { name: to_name }) => {
+                from_name == to_name || self.traits.contains_key(to_name)
+            }
             _ => false,
         }
     }

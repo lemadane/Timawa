@@ -121,6 +121,7 @@ pub struct SwitchCase {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
     IntLiteral(i64),
+    LongLiteral(i64),
     DecimalLiteral(f64),
     StringLiteral(String),
     BoolLiteral(bool),

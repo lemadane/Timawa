@@ -318,7 +318,12 @@ impl IrBuilder {
         }
 
         let ret_ty = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
-        self.emit(IrInstruction::Return { val: None });
+        let ret_val = if ret_ty == Type::Void {
+            None
+        } else {
+            Some(IrOperand::Null)
+        };
+        self.emit(IrInstruction::Return { val: ret_val });
         self.finish_block(entry_block);
 
         IrFunction {
@@ -598,8 +603,37 @@ impl IrBuilder {
                 IrOperand::Null
             }
             ExprKind::IntLiteral(v) => IrOperand::ConstantInt(*v),
+            ExprKind::LongLiteral(v) => IrOperand::ConstantLong(*v),
             ExprKind::DecimalLiteral(v) => IrOperand::ConstantDecimal(*v),
-            ExprKind::StringLiteral(v) => IrOperand::ConstantString(v.clone()),
+            ExprKind::StringLiteral(v) => {
+                if v.contains("${") {
+                    let mut parts = Vec::new();
+                    let mut curr = v.as_str();
+                    while let Some(start) = curr.find("${") {
+                        let (prefix, rest) = curr.split_at(start);
+                        if !prefix.is_empty() {
+                            parts.push(IrOperand::ConstantString(prefix.to_string()));
+                        }
+                        if let Some(end) = rest.find('}') {
+                            let var_name = &rest[2..end];
+                            if let Some((ptr, ty)) = self.lookup_var(var_name) {
+                                let dest = self.fresh_reg();
+                                self.emit(IrInstruction::Load { dest, ptr, ty: ty.clone() });
+                                parts.push(IrOperand::Register(dest, ty));
+                            }
+                            curr = &rest[end + 1..];
+                        } else {
+                            break;
+                        }
+                    }
+                    if !curr.is_empty() {
+                        parts.push(IrOperand::ConstantString(curr.to_string()));
+                    }
+                    parts.first().cloned().unwrap_or_else(|| IrOperand::ConstantString("".into()))
+                } else {
+                    IrOperand::ConstantString(v.clone())
+                }
+            },
             ExprKind::BoolLiteral(v) => IrOperand::ConstantBool(*v),
             ExprKind::NullLiteral => IrOperand::Null,
             ExprKind::This => {
@@ -726,6 +760,13 @@ impl IrBuilder {
                 val_op
             }
             ExprKind::Binary { op, left, right } => {
+                if op == &BinaryOp::Range {
+                    self.diagnostics.push(Diagnostic::error(
+                        "Range operator '..' is not supported yet",
+                        Some(expr.span),
+                    ));
+                    return IrOperand::ConstantInt(0);
+                }
                 let l_op = self.build_expr(left);
                 let r_op = self.build_expr(right);
                 let dest = self.fresh_reg();
