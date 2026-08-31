@@ -4,11 +4,11 @@ version = 4
 
 [[package]]
 name = "talas-compiler"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "talas-runtime",
 ]
 
 [[package]]
 name = "talas-runtime"
-version = "0.4.0"
+version = "0.5.0"

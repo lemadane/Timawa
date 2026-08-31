@@ -189,6 +189,662 @@ impl TypeChecker {
                 max_constructor_args: 0,
             },
         );
+
+        let mut currency_methods = HashMap::new();
+        currency_methods.insert("code".into(), (Vec::new(), Type::String));
+        currency_methods.insert("PHP".into(), (Vec::new(), Type::Class { name: "Currency".into() }));
+        currency_methods.insert("USD".into(), (Vec::new(), Type::Class { name: "Currency".into() }));
+        currency_methods.insert("EUR".into(), (Vec::new(), Type::Class { name: "Currency".into() }));
+        currency_methods.insert("JPY".into(), (Vec::new(), Type::Class { name: "Currency".into() }));
+        currency_methods.insert("GBP".into(), (Vec::new(), Type::Class { name: "Currency".into() }));
+
+        self.classes.insert(
+            "Currency".into(),
+            ClassInfo {
+                name: "Currency".into(),
+                fields: HashMap::new(),
+                methods: currency_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut money_methods = HashMap::new();
+        money_methods.insert("php".into(), (vec![Type::Decimal], Type::Class { name: "Money".into() }));
+        money_methods.insert("usd".into(), (vec![Type::Decimal], Type::Class { name: "Money".into() }));
+        money_methods.insert("eur".into(), (vec![Type::Decimal], Type::Class { name: "Money".into() }));
+        money_methods.insert("jpy".into(), (vec![Type::Decimal], Type::Class { name: "Money".into() }));
+        money_methods.insert("gbp".into(), (vec![Type::Decimal], Type::Class { name: "Money".into() }));
+        money_methods.insert("amount".into(), (Vec::new(), Type::Decimal));
+        money_methods.insert("currency".into(), (Vec::new(), Type::Class { name: "Currency".into() }));
+        money_methods.insert("add".into(), (vec![Type::Class { name: "Money".into() }], Type::Class { name: "Money".into() }));
+        money_methods.insert("subtract".into(), (vec![Type::Class { name: "Money".into() }], Type::Class { name: "Money".into() }));
+        money_methods.insert("multiply".into(), (vec![Type::Class { name: "Percent".into() }], Type::Class { name: "Money".into() }));
+
+        self.classes.insert(
+            "Money".into(),
+            ClassInfo {
+                name: "Money".into(),
+                fields: HashMap::new(),
+                methods: money_methods,
+                param_types: vec![Type::Decimal, Type::Class { name: "Currency".into() }],
+                min_constructor_args: 2,
+                max_constructor_args: 2,
+            },
+        );
+
+        let mut exchange_methods = HashMap::new();
+        exchange_methods.insert("convert".into(), (vec![Type::Class { name: "Money".into() }, Type::Class { name: "Currency".into() }, Type::Decimal], Type::Class { name: "Money".into() }));
+
+        self.classes.insert(
+            "Exchange".into(),
+            ClassInfo {
+                name: "Exchange".into(),
+                fields: HashMap::new(),
+                methods: exchange_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut percent_methods = HashMap::new();
+        percent_methods.insert("of".into(), (vec![Type::Decimal], Type::Class { name: "Percent".into() }));
+        percent_methods.insert("value".into(), (Vec::new(), Type::Decimal));
+
+        self.classes.insert(
+            "Percent".into(),
+            ClassInfo {
+                name: "Percent".into(),
+                fields: HashMap::new(),
+                methods: percent_methods,
+                param_types: vec![Type::Decimal],
+                min_constructor_args: 1,
+                max_constructor_args: 1,
+            },
+        );
+
+        let mut rate_methods = HashMap::new();
+        rate_methods.insert("percent".into(), (vec![Type::Decimal], Type::Class { name: "Rate".into() }));
+        rate_methods.insert("value".into(), (Vec::new(), Type::Decimal));
+
+        self.classes.insert(
+            "Rate".into(),
+            ClassInfo {
+                name: "Rate".into(),
+                fields: HashMap::new(),
+                methods: rate_methods,
+                param_types: vec![Type::Decimal],
+                min_constructor_args: 1,
+                max_constructor_args: 1,
+            },
+        );
+
+        let mut geopoint_methods = HashMap::new();
+        geopoint_methods.insert("latitude".into(), (Vec::new(), Type::Decimal));
+        geopoint_methods.insert("longitude".into(), (Vec::new(), Type::Decimal));
+        geopoint_methods.insert("distanceTo".into(), (vec![Type::Class { name: "GeoPoint".into() }], Type::Class { name: "Distance".into() }));
+        geopoint_methods.insert("bearingTo".into(), (vec![Type::Class { name: "GeoPoint".into() }], Type::Decimal));
+
+        self.classes.insert(
+            "GeoPoint".into(),
+            ClassInfo {
+                name: "GeoPoint".into(),
+                fields: HashMap::new(),
+                methods: geopoint_methods,
+                param_types: vec![Type::Decimal, Type::Decimal],
+                min_constructor_args: 2,
+                max_constructor_args: 2,
+            },
+        );
+
+        let mut distance_methods = HashMap::new();
+        distance_methods.insert("meters".into(), (vec![Type::Decimal], Type::Class { name: "Distance".into() }));
+        distance_methods.insert("kilometers".into(), (vec![Type::Decimal], Type::Class { name: "Distance".into() }));
+        distance_methods.insert("miles".into(), (vec![Type::Decimal], Type::Class { name: "Distance".into() }));
+
+        self.classes.insert(
+            "Distance".into(),
+            ClassInfo {
+                name: "Distance".into(),
+                fields: HashMap::new(),
+                methods: distance_methods,
+                param_types: vec![Type::Decimal],
+                min_constructor_args: 0,
+                max_constructor_args: 1,
+            },
+        );
+
+        let mut geobounds_methods = HashMap::new();
+        geobounds_methods.insert("southwest".into(), (Vec::new(), Type::Class { name: "GeoPoint".into() }));
+        geobounds_methods.insert("northeast".into(), (Vec::new(), Type::Class { name: "GeoPoint".into() }));
+        geobounds_methods.insert("contains".into(), (vec![Type::Class { name: "GeoPoint".into() }], Type::Bool));
+
+        self.classes.insert(
+            "GeoBounds".into(),
+            ClassInfo {
+                name: "GeoBounds".into(),
+                fields: HashMap::new(),
+                methods: geobounds_methods,
+                param_types: vec![Type::Class { name: "GeoPoint".into() }, Type::Class { name: "GeoPoint".into() }],
+                min_constructor_args: 2,
+                max_constructor_args: 2,
+            },
+        );
+
+        let mut geolocation_methods = HashMap::new();
+        geolocation_methods.insert("current".into(), (Vec::new(), Type::Class { name: "GeoPoint".into() }));
+
+        self.classes.insert(
+            "Geolocation".into(),
+            ClassInfo {
+                name: "Geolocation".into(),
+                fields: HashMap::new(),
+                methods: geolocation_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut err_methods = HashMap::new();
+        err_methods.insert("message".into(), (Vec::new(), Type::String));
+        err_methods.insert("stacktrace".into(), (Vec::new(), Type::String));
+
+        self.classes.insert(
+            "LocationPermissionError".into(),
+            ClassInfo {
+                name: "LocationPermissionError".into(),
+                fields: HashMap::new(),
+                methods: err_methods.clone(),
+                param_types: vec![Type::String],
+                min_constructor_args: 0,
+                max_constructor_args: 1,
+            },
+        );
+
+        self.classes.insert(
+            "LocationUnavailableError".into(),
+            ClassInfo {
+                name: "LocationUnavailableError".into(),
+                fields: HashMap::new(),
+                methods: err_methods,
+                param_types: vec![Type::String],
+                min_constructor_args: 0,
+                max_constructor_args: 1,
+            },
+        );
+
+        let mut math_methods = HashMap::new();
+        math_methods.insert("PI".into(), (Vec::new(), Type::Decimal));
+        math_methods.insert("E".into(), (Vec::new(), Type::Decimal));
+        math_methods.insert("TAU".into(), (Vec::new(), Type::Decimal));
+
+        math_methods.insert("abs".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("min".into(), (vec![Type::Decimal, Type::Decimal], Type::Decimal));
+        math_methods.insert("max".into(), (vec![Type::Decimal, Type::Decimal], Type::Decimal));
+        math_methods.insert("sqrt".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("cbrt".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("pow".into(), (vec![Type::Decimal, Type::Decimal], Type::Decimal));
+
+        math_methods.insert("floor".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("ceil".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("round".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("truncate".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("clamp".into(), (vec![Type::Decimal, Type::Decimal, Type::Decimal], Type::Decimal));
+        math_methods.insert("sign".into(), (vec![Type::Decimal], Type::Int));
+
+        math_methods.insert("sin".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("cos".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("tan".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("asin".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("acos".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("atan".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("atan2".into(), (vec![Type::Decimal, Type::Decimal], Type::Decimal));
+        math_methods.insert("radians".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("degrees".into(), (vec![Type::Decimal], Type::Decimal));
+
+        math_methods.insert("log".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("log10".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("log2".into(), (vec![Type::Decimal], Type::Decimal));
+        math_methods.insert("exp".into(), (vec![Type::Decimal], Type::Decimal));
+
+        math_methods.insert("isNaN".into(), (vec![Type::Decimal], Type::Bool));
+        math_methods.insert("isInfinite".into(), (vec![Type::Decimal], Type::Bool));
+        math_methods.insert("isFinite".into(), (vec![Type::Decimal], Type::Bool));
+        math_methods.insert("isEven".into(), (vec![Type::Int], Type::Bool));
+        math_methods.insert("isOdd".into(), (vec![Type::Int], Type::Bool));
+        math_methods.insert("gcd".into(), (vec![Type::Int, Type::Int], Type::Int));
+        math_methods.insert("lcm".into(), (vec![Type::Int, Type::Int], Type::Int));
+
+        self.classes.insert(
+            "Math".into(),
+            ClassInfo {
+                name: "Math".into(),
+                fields: HashMap::new(),
+                methods: math_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut random_methods = HashMap::new();
+        random_methods.insert("int".into(), (vec![Type::Int, Type::Int], Type::Int));
+        random_methods.insert("decimal".into(), (Vec::new(), Type::Decimal));
+        random_methods.insert("bool".into(), (Vec::new(), Type::Bool));
+        random_methods.insert("uuid".into(), (Vec::new(), Type::String));
+        random_methods.insert("bytes".into(), (vec![Type::Int], Type::Class { name: "List".into() }));
+
+        self.classes.insert(
+            "Random".into(),
+            ClassInfo {
+                name: "Random".into(),
+                fields: HashMap::new(),
+                methods: random_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut secure_random_methods = HashMap::new();
+        secure_random_methods.insert("bytes".into(), (vec![Type::Int], Type::Class { name: "List".into() }));
+
+        self.classes.insert(
+            "SecureRandom".into(),
+            ClassInfo {
+                name: "SecureRandom".into(),
+                fields: HashMap::new(),
+                methods: secure_random_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut statistics_methods = HashMap::new();
+        statistics_methods.insert("mean".into(), (vec![Type::Class { name: "List".into() }], Type::Decimal));
+        statistics_methods.insert("median".into(), (vec![Type::Class { name: "List".into() }], Type::Decimal));
+        statistics_methods.insert("variance".into(), (vec![Type::Class { name: "List".into() }], Type::Decimal));
+        statistics_methods.insert("standardDeviation".into(), (vec![Type::Class { name: "List".into() }], Type::Decimal));
+        statistics_methods.insert("percentile".into(), (vec![Type::Class { name: "List".into() }, Type::Decimal], Type::Decimal));
+        statistics_methods.insert("covariance".into(), (vec![Type::Class { name: "List".into() }, Type::Class { name: "List".into() }], Type::Decimal));
+        statistics_methods.insert("correlation".into(), (vec![Type::Class { name: "List".into() }, Type::Class { name: "List".into() }], Type::Decimal));
+
+        self.classes.insert(
+            "Statistics".into(),
+            ClassInfo {
+                name: "Statistics".into(),
+                fields: HashMap::new(),
+                methods: statistics_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut probability_methods = HashMap::new();
+        probability_methods.insert("factorial".into(), (vec![Type::Int], Type::Int));
+        probability_methods.insert("permutations".into(), (vec![Type::Int, Type::Int], Type::Int));
+        probability_methods.insert("combinations".into(), (vec![Type::Int, Type::Int], Type::Int));
+
+        probability_methods.insert("normal".into(), (vec![Type::Decimal, Type::Decimal, Type::Decimal], Type::Decimal));
+        probability_methods.insert("binomial".into(), (vec![Type::Int, Type::Int, Type::Decimal], Type::Decimal));
+        probability_methods.insert("poisson".into(), (vec![Type::Int, Type::Decimal], Type::Decimal));
+        probability_methods.insert("uniform".into(), (vec![Type::Decimal, Type::Decimal, Type::Decimal], Type::Decimal));
+
+        self.classes.insert(
+            "Probability".into(),
+            ClassInfo {
+                name: "Probability".into(),
+                fields: HashMap::new(),
+                methods: probability_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut file_methods = HashMap::new();
+        file_methods.insert("open".into(), (vec![Type::String], Type::Class { name: "File".into() }));
+        file_methods.insert("read".into(), (vec![Type::String], Type::String));
+        file_methods.insert("write".into(), (vec![Type::String, Type::String], Type::Void));
+        file_methods.insert("append".into(), (vec![Type::String, Type::String], Type::Void));
+        file_methods.insert("delete".into(), (vec![Type::String], Type::Void));
+        file_methods.insert("exists".into(), (vec![Type::String], Type::Bool));
+        file_methods.insert("info".into(), (vec![Type::String], Type::Class { name: "FileInfo".into() }));
+        file_methods.insert("close".into(), (Vec::new(), Type::Void));
+
+        self.classes.insert(
+            "File".into(),
+            ClassInfo {
+                name: "File".into(),
+                fields: HashMap::new(),
+                methods: file_methods,
+                param_types: vec![Type::String],
+                min_constructor_args: 0,
+                max_constructor_args: 1,
+            },
+        );
+
+        let mut fileinfo_methods = HashMap::new();
+        fileinfo_methods.insert("size".into(), (Vec::new(), Type::Long));
+        fileinfo_methods.insert("createdAt".into(), (Vec::new(), Type::Class { name: "DateTime".into() }));
+        fileinfo_methods.insert("modifiedAt".into(), (Vec::new(), Type::Class { name: "DateTime".into() }));
+        fileinfo_methods.insert("isDirectory".into(), (Vec::new(), Type::Bool));
+
+        self.classes.insert(
+            "FileInfo".into(),
+            ClassInfo {
+                name: "FileInfo".into(),
+                fields: HashMap::new(),
+                methods: fileinfo_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut directory_methods = HashMap::new();
+        directory_methods.insert("create".into(), (vec![Type::String], Type::Void));
+        directory_methods.insert("delete".into(), (vec![Type::String], Type::Void));
+        directory_methods.insert("list".into(), (vec![Type::String], Type::Class { name: "List".into() }));
+
+        self.classes.insert(
+            "Directory".into(),
+            ClassInfo {
+                name: "Directory".into(),
+                fields: HashMap::new(),
+                methods: directory_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut path_methods = HashMap::new();
+        path_methods.insert("join".into(), (vec![Type::String, Type::String], Type::String));
+        path_methods.insert("filename".into(), (vec![Type::String], Type::String));
+        path_methods.insert("extension".into(), (vec![Type::String], Type::String));
+
+        self.classes.insert(
+            "Path".into(),
+            ClassInfo {
+                name: "Path".into(),
+                fields: HashMap::new(),
+                methods: path_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let file_errors = vec!["FileError", "FileNotFoundError", "PermissionError", "AlreadyExistsError", "InvalidPathError", "DiskFullError"];
+        for err_name in file_errors {
+            let mut err_methods = HashMap::new();
+            err_methods.insert("message".into(), (Vec::new(), Type::String));
+            err_methods.insert("stacktrace".into(), (Vec::new(), Type::String));
+
+            self.classes.insert(
+                err_name.into(),
+                ClassInfo {
+                    name: err_name.into(),
+                    fields: HashMap::new(),
+                    methods: err_methods,
+                    param_types: vec![Type::String],
+                    min_constructor_args: 0,
+                    max_constructor_args: 1,
+                },
+            );
+        }
+
+        let handler_type = Type::Class { name: "Function".into() };
+        let mut server_methods = HashMap::new();
+        server_methods.insert("get".into(), (vec![Type::String, handler_type.clone()], Type::Void));
+        server_methods.insert("post".into(), (vec![Type::String, handler_type.clone()], Type::Void));
+        server_methods.insert("put".into(), (vec![Type::String, handler_type.clone()], Type::Void));
+        server_methods.insert("patch".into(), (vec![Type::String, handler_type.clone()], Type::Void));
+        server_methods.insert("delete".into(), (vec![Type::String, handler_type.clone()], Type::Void));
+        server_methods.insert("options".into(), (vec![Type::String, handler_type.clone()], Type::Void));
+        server_methods.insert("head".into(), (vec![Type::String, handler_type.clone()], Type::Void));
+        server_methods.insert("use".into(), (vec![Type::String, handler_type.clone()], Type::Void));
+        server_methods.insert("static".into(), (vec![Type::String, Type::String], Type::Void));
+        server_methods.insert("websocket".into(), (vec![Type::String, handler_type.clone()], Type::Void));
+        server_methods.insert("start".into(), (vec![Type::Int], Type::Void));
+        server_methods.insert("stop".into(), (Vec::new(), Type::Void));
+        server_methods.insert("port".into(), (Vec::new(), Type::Int));
+        server_methods.insert("tls".into(), (vec![Type::String, Type::String], Type::Void));
+        server_methods.insert("enableHttp2".into(), (Vec::new(), Type::Void));
+        server_methods.insert("enableHttp3".into(), (vec![Type::Int], Type::Void));
+
+        self.classes.insert(
+            "Server".into(),
+            ClassInfo {
+                name: "Server".into(),
+                fields: HashMap::new(),
+                methods: server_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut request_methods = HashMap::new();
+        request_methods.insert("path".into(), (vec![Type::String], Type::String));
+        request_methods.insert("pathLong".into(), (vec![Type::String], Type::Long));
+        request_methods.insert("pathInt".into(), (vec![Type::String], Type::Int));
+        request_methods.insert("query".into(), (vec![Type::String], Type::String));
+        request_methods.insert("queryDecimal".into(), (vec![Type::String], Type::Decimal));
+        request_methods.insert("header".into(), (vec![Type::String], Type::String));
+        request_methods.insert("cookie".into(), (vec![Type::String], Type::String));
+        request_methods.insert("hasBearerToken".into(), (Vec::new(), Type::Bool));
+        request_methods.insert("body".into(), (Vec::new(), Type::String));
+        request_methods.insert("method".into(), (Vec::new(), Type::String));
+        request_methods.insert("url".into(), (Vec::new(), Type::String));
+        request_methods.insert("ip".into(), (Vec::new(), Type::String));
+        request_methods.insert("protocol".into(), (Vec::new(), Type::String));
+        request_methods.insert("isHttp3".into(), (Vec::new(), Type::Bool));
+
+        self.classes.insert(
+            "Request".into(),
+            ClassInfo {
+                name: "Request".into(),
+                fields: HashMap::new(),
+                methods: request_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut response_methods = HashMap::new();
+        response_methods.insert("ok".into(), (vec![Type::String], Type::Class { name: "Response".into() }));
+        response_methods.insert("json".into(), (vec![Type::String], Type::Class { name: "Response".into() }));
+        response_methods.insert("html".into(), (vec![Type::String], Type::Class { name: "Response".into() }));
+        response_methods.insert("text".into(), (vec![Type::String], Type::Class { name: "Response".into() }));
+        response_methods.insert("created".into(), (vec![Type::String], Type::Class { name: "Response".into() }));
+        response_methods.insert("notFound".into(), (vec![Type::String], Type::Class { name: "Response".into() }));
+        response_methods.insert("internalServerError".into(), (vec![Type::String], Type::Class { name: "Response".into() }));
+        response_methods.insert("unauthorized".into(), (vec![Type::String], Type::Class { name: "Response".into() }));
+        response_methods.insert("redirect".into(), (vec![Type::String], Type::Class { name: "Response".into() }));
+        response_methods.insert("status".into(), (vec![Type::Int], Type::Class { name: "Response".into() }));
+
+        self.classes.insert(
+            "Response".into(),
+            ClassInfo {
+                name: "Response".into(),
+                fields: HashMap::new(),
+                methods: response_methods,
+                param_types: vec![Type::Int, Type::String],
+                min_constructor_args: 0,
+                max_constructor_args: 2,
+            },
+        );
+
+        let mut cookie_methods = HashMap::new();
+        cookie_methods.insert("name".into(), (Vec::new(), Type::String));
+        cookie_methods.insert("value".into(), (Vec::new(), Type::String));
+
+        self.classes.insert(
+            "Cookie".into(),
+            ClassInfo {
+                name: "Cookie".into(),
+                fields: HashMap::new(),
+                methods: cookie_methods,
+                param_types: vec![Type::String, Type::String],
+                min_constructor_args: 2,
+                max_constructor_args: 2,
+            },
+        );
+
+        let mut websocket_methods = HashMap::new();
+        websocket_methods.insert("onMessage".into(), (vec![handler_type], Type::Void));
+        websocket_methods.insert("send".into(), (vec![Type::String], Type::Void));
+        websocket_methods.insert("close".into(), (Vec::new(), Type::Void));
+
+        self.classes.insert(
+            "WebSocket".into(),
+            ClassInfo {
+                name: "WebSocket".into(),
+                fields: HashMap::new(),
+                methods: websocket_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut json_methods = HashMap::new();
+        json_methods.insert("parse".into(), (vec![Type::String], Type::Class { name: "JsonObject".into() }));
+        json_methods.insert("partialParse".into(), (vec![Type::String], Type::Class { name: "JsonObject".into() }));
+        json_methods.insert("stringify".into(), (vec![Type::Class { name: "JsonObject".into() }], Type::String));
+        json_methods.insert("from".into(), (vec![Type::Class { name: "JsonObject".into() }], Type::String));
+        json_methods.insert("to".into(), (vec![Type::String, Type::String], Type::Class { name: "JsonObject".into() }));
+
+        self.classes.insert(
+            "Json".into(),
+            ClassInfo {
+                name: "Json".into(),
+                fields: HashMap::new(),
+                methods: json_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut jsonobject_methods = HashMap::new();
+        jsonobject_methods.insert("getString".into(), (vec![Type::String], Type::String));
+        jsonobject_methods.insert("getInt".into(), (vec![Type::String], Type::Int));
+        jsonobject_methods.insert("getLong".into(), (vec![Type::String], Type::Long));
+        jsonobject_methods.insert("getDecimal".into(), (vec![Type::String], Type::Decimal));
+        jsonobject_methods.insert("getBool".into(), (vec![Type::String], Type::Bool));
+        jsonobject_methods.insert("getObject".into(), (vec![Type::String], Type::Class { name: "JsonObject".into() }));
+        jsonobject_methods.insert("getArray".into(), (vec![Type::String], Type::Class { name: "JsonArray".into() }));
+
+        self.classes.insert(
+            "JsonObject".into(),
+            ClassInfo {
+                name: "JsonObject".into(),
+                fields: HashMap::new(),
+                methods: jsonobject_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut jsonarray_methods = HashMap::new();
+        jsonarray_methods.insert("len".into(), (Vec::new(), Type::Int));
+        jsonarray_methods.insert("get".into(), (vec![Type::Int], Type::Class { name: "JsonObject".into() }));
+        jsonarray_methods.insert("getString".into(), (vec![Type::Int], Type::String));
+
+        self.classes.insert(
+            "JsonArray".into(),
+            ClassInfo {
+                name: "JsonArray".into(),
+                fields: HashMap::new(),
+                methods: jsonarray_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut xml_methods = HashMap::new();
+        xml_methods.insert("parse".into(), (vec![Type::String], Type::Class { name: "XmlDocument".into() }));
+        xml_methods.insert("partialParse".into(), (vec![Type::String], Type::Class { name: "XmlDocument".into() }));
+        xml_methods.insert("create".into(), (vec![Type::String], Type::Class { name: "XmlDocument".into() }));
+        xml_methods.insert("stringify".into(), (vec![Type::Class { name: "XmlDocument".into() }], Type::String));
+        xml_methods.insert("from".into(), (vec![Type::Class { name: "XmlDocument".into() }], Type::String));
+        xml_methods.insert("to".into(), (vec![Type::String, Type::String], Type::Class { name: "XmlDocument".into() }));
+
+        self.classes.insert(
+            "Xml".into(),
+            ClassInfo {
+                name: "Xml".into(),
+                fields: HashMap::new(),
+                methods: xml_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut xmldoc_methods = HashMap::new();
+        xmldoc_methods.insert("root".into(), (Vec::new(), Type::Class { name: "XmlElement".into() }));
+        xmldoc_methods.insert("toString".into(), (Vec::new(), Type::String));
+
+        self.classes.insert(
+            "XmlDocument".into(),
+            ClassInfo {
+                name: "XmlDocument".into(),
+                fields: HashMap::new(),
+                methods: xmldoc_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut xmlem_methods = HashMap::new();
+        xmlem_methods.insert("child".into(), (vec![Type::String], Type::Class { name: "XmlElement".into() }));
+        xmlem_methods.insert("element".into(), (vec![Type::String], Type::Class { name: "XmlElement".into() }));
+        xmlem_methods.insert("text".into(), (vec![Type::String], Type::Class { name: "XmlElement".into() }));
+        xmlem_methods.insert("getText".into(), (Vec::new(), Type::String));
+
+        self.classes.insert(
+            "XmlElement".into(),
+            ClassInfo {
+                name: "XmlElement".into(),
+                fields: HashMap::new(),
+                methods: xmlem_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let format_errors = vec!["JsonError", "JsonParseError", "MissingFieldError", "InvalidTypeError", "XmlError", "XmlParseError"];
+        for err_name in format_errors {
+            let mut err_methods = HashMap::new();
+            err_methods.insert("message".into(), (Vec::new(), Type::String));
+            err_methods.insert("stacktrace".into(), (Vec::new(), Type::String));
+
+            self.classes.insert(
+                err_name.into(),
+                ClassInfo {
+                    name: err_name.into(),
+                    fields: HashMap::new(),
+                    methods: err_methods,
+                    param_types: vec![Type::String],
+                    min_constructor_args: 0,
+                    max_constructor_args: 1,
+                },
+            );
+        }
     }
 
     pub fn check_program(&mut self, program: &Program) -> bool {
@@ -811,8 +1467,12 @@ impl TypeChecker {
         match (from, to) {
             (Type::Int, Type::Long) | (Type::Long, Type::Int) => true,
             (Type::Int, Type::Decimal) | (Type::Long, Type::Decimal) => true,
+            (Type::Int, Type::Class { name }) if name == "Function" => true,
             (Type::Class { name: from_name }, Type::Class { name: to_name }) => {
                 from_name == to_name || self.traits.contains_key(to_name)
+            }
+            (from_ty, Type::Nullable(inner)) => {
+                from_ty == &Type::Nullable(Box::new(Type::Void)) || self.is_assignable_to(from_ty, inner)
             }
             _ => false,
         }

@@ -2319,3 +2319,1133 @@ fn test_e2e_datetime_unix_timestamp_factories() {
         checker.diagnostics
     );
 }
+
+#[test]
+fn test_e2e_financial_money_factories_and_getters() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final balance = Money.php(1250.75)
+                print(balance.amount())
+                final curr = balance.currency()
+                print(curr.code())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Money factories failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Money factories failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_financial_money_addition() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final subtotal = Money.php(1000)
+                final shipping = Money.php(100)
+                final total = subtotal.add(shipping)
+                print(total.amount())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Money addition failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Money addition failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_financial_exchange_conversion() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final dollar = Money.usd(100)
+                final rate = 58.50
+                final converted = Exchange.convert(dollar, Currency.PHP, rate)
+                print(converted.amount())
+                final curr = converted.currency()
+                print(curr.code())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Exchange conversion failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Exchange conversion failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_financial_percent_and_rate_multiplication() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final price = Money.php(1000)
+                final vat = Percent(12)
+                final tax = price.multiply(vat)
+                print(tax.amount())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Percent multiplication failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Percent multiplication failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_geo_point_and_distance_getters() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final p = GeoPoint(14.5995, 120.9842)
+                print(p.latitude())
+                print(p.longitude())
+                final d = Distance.kilometers(5.5)
+                print(d.kilometers())
+                print(d.meters())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing GeoPoint and Distance getters failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking GeoPoint and Distance getters failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_geo_distance_and_bearing() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final home = GeoPoint(14.58, 121.12)
+                final provider = GeoPoint(14.60, 121.10)
+                final dist = home.distanceTo(provider)
+                print(dist.kilometers())
+                final bearing = home.bearingTo(provider)
+                print(bearing)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing distanceTo and bearingTo failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking distanceTo and bearingTo failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_geo_bounds_contains() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final sw = GeoPoint(14.0, 120.0)
+                final ne = GeoPoint(15.0, 121.0)
+                final bounds = GeoBounds(sw, ne)
+                final target = GeoPoint(14.5, 120.5)
+                print(bounds.contains(target))
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing GeoBounds contains failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking GeoBounds contains failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_geolocation_current_and_error() {
+    let source_code = r#"
+        class Application {
+            main() {
+                guard {
+                    final pos = Geolocation.current()
+                    print(pos.latitude())
+                }
+                check(err) {
+                    if (err) {
+                        print(err.message())
+                    }
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Geolocation current failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Geolocation current failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_math_constants_roots_powers() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final pi = Math.PI
+                print(pi)
+                final sq = Math.sqrt(144)
+                print(sq)
+                final pow = Math.pow(2, 8)
+                print(pow)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Math roots and powers failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Math roots and powers failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_math_rounding_clamp_sign() {
+    let source_code = r#"
+        class Application {
+            main() {
+                print(Math.round(12.56))
+                print(Math.clamp(150, 0, 100))
+                print(Math.sign(-42))
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Math rounding and clamp failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Math rounding and clamp failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_math_integer_gcd_lcm_even_odd() {
+    let source_code = r#"
+        class Application {
+            main() {
+                print(Math.gcd(48, 18))
+                print(Math.lcm(12, 18))
+                print(Math.isEven(10))
+                print(Math.isOdd(7))
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Math gcd and lcm failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Math gcd and lcm failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_random_securerandom_statistics() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final rInt = Random.int(1, 100)
+                print(rInt > 0)
+                final secBytes = SecureRandom.bytes(16)
+                print(secBytes.len())
+                final stats = [10.0, 20.0, 30.0]
+                print(Statistics.mean(stats))
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Random and Statistics failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Random and Statistics failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_probability_combinatorics() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final nCr = Probability.combinations(5, 2)
+                final nPr = Probability.permutations(5, 2)
+                final fact = Probability.factorial(5)
+                print(nCr)
+                print(nPr)
+                print(fact)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Probability combinatorics failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Probability combinatorics failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_probability_distributions() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final pdf = Probability.normal(0, 0, 1)
+                print(pdf)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Probability distributions failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Probability distributions failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_statistics_descriptive_and_correlation() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final data = [10.0, 20.0, 30.0, 40.0, 50.0]
+                print(Statistics.mean(data))
+                print(Statistics.median(data))
+                print(Statistics.percentile(data, 50))
+                final x = [1.0, 2.0, 3.0]
+                final y = [2.0, 4.0, 6.0]
+                print(Statistics.correlation(x, y))
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Statistics correlation failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Statistics correlation failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_file_write_read_exists_delete() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final path = `test_file_rw.txt`
+                File.write(path, `Hello Talas File API`)
+                print(File.exists(path))
+                final content = File.read(path)
+                print(content)
+                File.delete(path)
+                print(File.exists(path))
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing File write read failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking File write read failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_file_open_object_read_after_close() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final path = `test_obj_file.txt`
+                File.write(path, `File Object Line`)
+                guard {
+                    final file = File.open(path)
+                    after file.close()
+                    final text = file.read()
+                    print(text)
+                }
+                check(err) {
+                    if (err) {
+                        print(err.message())
+                    }
+                }
+                File.delete(path)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing File open object failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking File open object failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_file_info_metadata() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final path = `test_info.txt`
+                File.write(path, `Metadata test`)
+                final info = File.info(path)
+                print(info.size() > 0)
+                print(info.isDirectory())
+                File.delete(path)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing File info metadata failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking File info metadata failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_directory_and_path_operations() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final p = Path.join(`/home/user`, `config.json`)
+                print(Path.filename(p))
+                print(Path.extension(p))
+                final dir = `test_dir_logs`
+                Directory.create(dir)
+                final files = Directory.list(`.`)
+                print(files.len() >= 0)
+                Directory.delete(dir)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Directory and Path failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Directory and Path failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_file_error_handling_guard_check() {
+    let source_code = r#"
+        class Application {
+            main() {
+                guard {
+                    final content = File.read(`non_existent_file_999.txt`)
+                    print(content)
+                }
+                check(err) {
+                    if (err is FileNotFoundError) {
+                        print(`File does not exist`)
+                    }
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing File error handling failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking File error handling failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_server_route_registration_and_response_factories() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final server = Server()
+                server.get(`/users`) { request ->
+                    return Response.ok(`User list`)
+                }
+                server.post(`/users`) { request ->
+                    return Response.created(`User created`)
+                }
+                print(server.port())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Server routes failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Server routes failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_server_request_path_query_headers() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final server = Server()
+                server.get(`/users/{id}`) { request ->
+                    final id = request.pathLong(`id`)
+                    final auth = request.header(`Authorization`)
+                    if (id == 0) {
+                        return Response.notFound(`User not found`)
+                    }
+                    return Response.json(`{"id": 1, "name": "Alice"}`)
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Server Request path and headers failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Server Request path and headers failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_server_middleware_and_error_handling() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final server = Server()
+                server.use(`/api`) { request ->
+                    if (!request.hasBearerToken()) {
+                        raise(GenericError(`Unauthorized`))
+                    }
+                }
+                server.get(`/api/data`) { request ->
+                    guard {
+                        final val = request.query(`search`)
+                        return Response.text(val)
+                    }
+                    check(err) {
+                        if (err) {
+                            return Response.internalServerError(err.message())
+                        }
+                    }
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Server middleware failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Server middleware failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_server_websocket_and_tls() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final server = Server()
+                server.tls(`cert.pem`, `key.pem`)
+                server.websocket(`/chat`) { socket ->
+                    socket.onMessage { msg ->
+                        socket.send(`Echo: ${msg}`)
+                    }
+                }
+                server.start(8080)
+                server.stop()
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Server WebSocket and TLS failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Server WebSocket and TLS failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_server_http_protocol_versions() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final server = Server()
+                server.enableHttp2()
+                server.enableHttp3(443)
+                server.get(`/protocol`) { request ->
+                    print(request.protocol())
+                    print(request.isHttp3())
+                    return Response.ok(`Protocol: ${request.protocol()}`)
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing HTTP versions failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking HTTP versions failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_json_parse_getters_stringify() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final text = `{"name": "Lem", "age": 40}`
+                final json = Json.parse(text)
+                print(json.getString(`name`))
+                print(json.getInt(`age`))
+                final s = Json.stringify(json)
+                print(s.len() > 0)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Json getters failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Json getters failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_json_parse_error_handling() {
+    let source_code = r#"
+        class Application {
+            main() {
+                guard {
+                    final data = Json.parse(`{invalid_json}`)
+                }
+                check(err) {
+                    if (err is JsonParseError) {
+                        print(err.message())
+                    }
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Json parse error failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Json parse error failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_xml_create_element_text_tostring() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final doc = Xml.create(`user`)
+                doc.root().element(`name`).text(`Lem`)
+                doc.root().element(`age`).text(`40`)
+                print(doc.toString())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Xml create failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Xml create failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_xml_parse_child_navigation() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final text = `<user><name>Lem</name><age>40</age></user>`
+                final doc = Xml.parse(text)
+                final root = doc.root()
+                print(root.child(`name`).text())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Xml parse child navigation failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Xml parse child navigation failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_pure_talas_json_and_xml_record_mapping() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final jsonText = `{"restaurantID": "0603", "orderType": "DineIn"}`
+                final json = Json.parse(jsonText)
+                print(json.getString(`restaurantID`))
+
+                final xmlText = `<KitchenOrderScan><RestaurantID>0603</RestaurantID></KitchenOrderScan>`
+                final xmlDoc = Xml.parse(xmlText)
+                print(xmlDoc.root().child(`RestaurantID`).text())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing pure Talas record mapping failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking pure Talas record mapping failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_pure_talas_partial_parse_and_strict_modes() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final partialJson = Json.partialParse(`{"name": "Lem", "extra": 123}`, JsonObject)
+                print(partialJson.getString(`name`))
+                final partialXml = Xml.partialParse(`<user><name>Lem</name><extra>123</extra></user>`, XmlDocument)
+                print(partialXml.root().child(`name`).text())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing pure Talas partial parse failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking pure Talas partial parse failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_nullable_declaration_and_null_assignment_valid() {
+    let source_code = r#"
+        class User(string name = `Guest`)
+
+        class Application {
+            main() {
+                User? u1
+                User? u2 = null
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing nullable declaration failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking nullable declaration failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_non_nullable_declaration_default_constructor_valid() {
+    let source_code = r#"
+        class User(string name = `Guest`)
+
+        class Application {
+            main() {
+                User u1
+                User u2 = User()
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing non-nullable declaration failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking non-nullable declaration failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_non_nullable_declaration_null_assignment_invalid() {
+    let source_code = r#"
+        class User(string name = `Guest`)
+
+        class Application {
+            main() {
+                User u = null
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+    assert!(parser.diagnostics.is_empty(), "Parsing failed: {:?}", parser.diagnostics);
+
+    let mut checker = TypeChecker::new();
+    let is_valid = checker.check_program(&program);
+    assert!(
+        !is_valid || !checker.diagnostics.is_empty(),
+        "Expected assigning null to non-nullable type User to produce a diagnostic error"
+    );
+}

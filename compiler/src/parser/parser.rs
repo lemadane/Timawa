@@ -490,8 +490,19 @@ impl<'a> Parser<'a> {
             TokenKind::Yield => self.parse_yield_stmt(),
             TokenKind::Guard => self.parse_guard_stmt(),
             TokenKind::Raise => self.parse_raise_stmt(),
+            TokenKind::After => self.parse_after_stmt(),
             _ => self.parse_expr_or_typed_decl_stmt(),
         }
+    }
+
+    fn parse_after_stmt(&mut self) -> Result<Stmt, ()> {
+        let start_span = self.current_token.span;
+        self.expect(&TokenKind::After, "after")?;
+        let expr = self.parse_expr(Precedence::None)?;
+        Ok(Stmt {
+            kind: StmtKind::Expr(expr),
+            span: start_span,
+        })
     }
 
     fn parse_guard_stmt(&mut self) -> Result<Stmt, ()> {
@@ -622,32 +633,42 @@ impl<'a> Parser<'a> {
         )
     }
 
+    fn is_typed_decl_start(&self) -> bool {
+        if self.is_type_specifier(&self.current_token.kind) {
+            if matches!(self.peek_token.kind, TokenKind::Identifier(_)) {
+                return true;
+            }
+            if self.peek_token.kind == TokenKind::Question {
+                return true;
+            }
+        }
+        false
+    }
+
     fn parse_expr_or_typed_decl_stmt(&mut self) -> Result<Stmt, ()> {
         let start_span = self.current_token.span;
 
-        if self.is_type_specifier(&self.current_token.kind) {
-            if matches!(self.peek_token.kind, TokenKind::Identifier(_)) {
-                let type_annotation = self.parse_type_spec()?;
-                if let TokenKind::Identifier(name) = self.current_token.kind.clone() {
-                    self.advance();
-                    let initializer = if self.match_token(&TokenKind::Equal) {
-                        Some(self.parse_expr(Precedence::None)?)
-                    } else {
-                        None
-                    };
-                    let end_span = self.current_token.span;
-                    self.match_token(&TokenKind::Semicolon);
+        if self.is_typed_decl_start() {
+            let type_annotation = self.parse_type_spec()?;
+            if let TokenKind::Identifier(name) = self.current_token.kind.clone() {
+                self.advance();
+                let initializer = if self.match_token(&TokenKind::Equal) {
+                    Some(self.parse_expr(Precedence::None)?)
+                } else {
+                    None
+                };
+                let end_span = self.current_token.span;
+                self.match_token(&TokenKind::Semicolon);
 
-                    return Ok(Stmt {
-                        kind: StmtKind::LocalDecl {
-                            name,
-                            is_mutable: false,
-                            type_annotation: Some(type_annotation),
-                            initializer,
-                        },
-                        span: Span::combine(start_span, end_span),
-                    });
-                }
+                return Ok(Stmt {
+                    kind: StmtKind::LocalDecl {
+                        name,
+                        is_mutable: false,
+                        type_annotation: Some(type_annotation),
+                        initializer,
+                    },
+                    span: Span::combine(start_span, end_span),
+                });
             }
         }
 
@@ -1060,6 +1081,34 @@ impl<'a> Parser<'a> {
                         self.advance();
                         "async".to_string()
                     }
+                    TokenKind::IntType => {
+                        self.advance();
+                        "int".to_string()
+                    }
+                    TokenKind::LongType => {
+                        self.advance();
+                        "long".to_string()
+                    }
+                    TokenKind::DecimalType => {
+                        self.advance();
+                        "decimal".to_string()
+                    }
+                    TokenKind::StringType => {
+                        self.advance();
+                        "string".to_string()
+                    }
+                    TokenKind::BoolType => {
+                        self.advance();
+                        "bool".to_string()
+                    }
+                    TokenKind::ByteType => {
+                        self.advance();
+                        "byte".to_string()
+                    }
+                    TokenKind::After => {
+                        self.advance();
+                        "after".to_string()
+                    }
                     _ => {
                         self.diagnostics.push(Diagnostic::error("Expected member name after '.'", Some(self.current_token.span)));
                         return Err(());
@@ -1087,12 +1136,61 @@ impl<'a> Parser<'a> {
                         }
                     }
                     let end_tok = self.expect(&TokenKind::CloseParen, ")")?;
+                    let mut end_span = end_tok.span;
+                    if self.check(&TokenKind::OpenBrace) {
+                        let brace_start = self.current_token.clone();
+                        self.advance();
+                        let mut depth = 1;
+                        while depth > 0 && !self.check(&TokenKind::Eof) {
+                            if self.check(&TokenKind::OpenBrace) {
+                                depth += 1;
+                                self.advance();
+                            } else if self.check(&TokenKind::CloseBrace) {
+                                depth -= 1;
+                                end_span = self.current_token.span;
+                                self.advance();
+                            } else {
+                                self.advance();
+                            }
+                        }
+                        args.push(Expr {
+                            kind: ExprKind::IntLiteral(0),
+                            span: brace_start.span,
+                        });
+                    }
                     Ok(Expr {
                         kind: ExprKind::Call {
                             callee: Box::new(member_expr),
                             args,
                         },
-                        span: Span::combine(left.span, end_tok.span),
+                        span: Span::combine(left.span, end_span),
+                    })
+                } else if self.check(&TokenKind::OpenBrace) {
+                    let brace_start = self.current_token.clone();
+                    self.advance();
+                    let mut depth = 1;
+                    let mut end_span = brace_start.span;
+                    while depth > 0 && !self.check(&TokenKind::Eof) {
+                        if self.check(&TokenKind::OpenBrace) {
+                            depth += 1;
+                            self.advance();
+                        } else if self.check(&TokenKind::CloseBrace) {
+                            depth -= 1;
+                            end_span = self.current_token.span;
+                            self.advance();
+                        } else {
+                            self.advance();
+                        }
+                    }
+                    Ok(Expr {
+                        kind: ExprKind::Call {
+                            callee: Box::new(member_expr),
+                            args: vec![Expr {
+                                kind: ExprKind::IntLiteral(0),
+                                span: brace_start.span,
+                            }],
+                        },
+                        span: Span::combine(left.span, end_span),
                     })
                 } else {
                     Ok(member_expr)

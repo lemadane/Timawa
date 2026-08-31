@@ -938,6 +938,626 @@ impl IrBuilder {
                             return IrOperand::Register(dest, ret_ty);
                         }
 
+                        if class_name == "Currency" || member == "code" || ["PHP", "USD", "EUR", "JPY", "GBP"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "code" => "talas_currency_code",
+                                _ => "talas_currency_create",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = Vec::new();
+                            if member == "code" {
+                                call_args.push(obj_op);
+                            }
+                            call_args.extend(arg_ops);
+                            let ret_ty = if member == "code" { Type::String } else { Type::Class { name: "Currency".into() } };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "Money" || ["php", "usd", "eur", "jpy", "gbp", "amount", "currency", "add", "subtract", "multiply"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "php" => "talas_money_php",
+                                "usd" => "talas_money_usd",
+                                "eur" => "talas_money_eur",
+                                "jpy" => "talas_money_jpy",
+                                "gbp" => "talas_money_gbp",
+                                "amount" => "talas_money_amount",
+                                "currency" => "talas_money_currency",
+                                "add" => "talas_money_add",
+                                "subtract" => "talas_money_subtract",
+                                "multiply" => "talas_money_multiply_percent",
+                                _ => "talas_money_create",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = Vec::new();
+                            if ["amount", "currency", "add", "subtract", "multiply"].contains(&member.as_str()) {
+                                call_args.push(obj_op);
+                            }
+                            call_args.extend(arg_ops);
+                            let ret_ty = match member.as_str() {
+                                "amount" => Type::Decimal,
+                                "currency" => Type::Class { name: "Currency".into() },
+                                _ => Type::Class { name: "Money".into() },
+                            };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "Exchange" || member == "convert" {
+                            let dest = self.fresh_reg();
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: "talas_exchange_convert".into(),
+                                args: arg_ops,
+                                ret_ty: Type::Class { name: "Money".into() },
+                            });
+                            return IrOperand::Register(dest, Type::Class { name: "Money".into() });
+                        }
+
+                        if class_name == "Percent" || member == "of" || member == "value" {
+                            let symbol = if member == "value" { "talas_percent_value" } else { "talas_percent_create" };
+                            let dest = self.fresh_reg();
+                            let mut call_args = Vec::new();
+                            if member == "value" {
+                                call_args.push(obj_op);
+                            }
+                            call_args.extend(arg_ops);
+                            let ret_ty = if member == "value" { Type::Decimal } else { Type::Class { name: "Percent".into() } };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "Rate" || member == "percent" || member == "value" {
+                            let symbol = if member == "value" { "talas_rate_value" } else { "talas_rate_create" };
+                            let dest = self.fresh_reg();
+                            let mut call_args = Vec::new();
+                            if member == "value" {
+                                call_args.push(obj_op);
+                            }
+                            call_args.extend(arg_ops);
+                            let ret_ty = if member == "value" { Type::Decimal } else { Type::Class { name: "Rate".into() } };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "GeoPoint" || ["latitude", "longitude", "distanceTo", "bearingTo"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "latitude" => "talas_geopoint_latitude",
+                                "longitude" => "talas_geopoint_longitude",
+                                "distanceTo" => "talas_geopoint_distance_to",
+                                "bearingTo" => "talas_geopoint_bearing_to",
+                                _ => "talas_geopoint_create",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = vec![obj_op];
+                            call_args.extend(arg_ops);
+                            let ret_ty = match member.as_str() {
+                                "distanceTo" => Type::Class { name: "Distance".into() },
+                                _ => Type::Decimal,
+                            };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "Distance" || ["meters", "kilometers", "miles"].contains(&member.as_str()) {
+                            let is_inst = obj_op.get_type() == (Type::Class { name: "Distance".into() });
+                            let symbol = if is_inst {
+                                match member.as_str() {
+                                    "meters" => "talas_distance_meters",
+                                    "kilometers" => "talas_distance_km",
+                                    "miles" => "talas_distance_miles",
+                                    _ => "talas_distance_meters",
+                                }
+                            } else {
+                                match member.as_str() {
+                                    "meters" => "talas_distance_create_meters",
+                                    "kilometers" => "talas_distance_create_km",
+                                    "miles" => "talas_distance_create_miles",
+                                    _ => "talas_distance_create_meters",
+                                }
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = Vec::new();
+                            if is_inst {
+                                call_args.push(obj_op);
+                            }
+                            call_args.extend(arg_ops);
+                            let ret_ty = if is_inst { Type::Decimal } else { Type::Class { name: "Distance".into() } };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "GeoBounds" || ["southwest", "northeast", "contains"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "contains" => "talas_geobounds_contains",
+                                _ => "talas_geobounds_create",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = vec![obj_op];
+                            call_args.extend(arg_ops);
+                            let ret_ty = if member == "contains" { Type::Bool } else { Type::Class { name: "GeoPoint".into() } };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "Geolocation" || member == "current" {
+                            let dest = self.fresh_reg();
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: "talas_geolocation_current".into(),
+                                args: arg_ops,
+                                ret_ty: Type::Class { name: "GeoPoint".into() },
+                            });
+                            return IrOperand::Register(dest, Type::Class { name: "GeoPoint".into() });
+                        }
+
+                        if class_name == "Math" || ["PI", "E", "TAU", "abs", "min", "max", "sqrt", "cbrt", "pow", "floor", "ceil", "round", "truncate", "clamp", "sign", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "radians", "degrees", "log", "log10", "log2", "exp", "isNaN", "isInfinite", "isFinite", "isEven", "isOdd", "gcd", "lcm"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "PI" => "talas_math_pi",
+                                "E" => "talas_math_e",
+                                "TAU" => "talas_math_tau",
+                                "abs" => "talas_math_abs",
+                                "min" => "talas_math_min",
+                                "max" => "talas_math_max",
+                                "sqrt" => "talas_math_sqrt",
+                                "cbrt" => "talas_math_cbrt",
+                                "pow" => "talas_math_pow",
+                                "floor" => "talas_math_floor",
+                                "ceil" => "talas_math_ceil",
+                                "round" => if arg_ops.len() > 1 { "talas_math_round_decimals" } else { "talas_math_round" },
+                                "truncate" => "talas_math_truncate",
+                                "clamp" => "talas_math_clamp",
+                                "sign" => "talas_math_sign",
+                                "sin" => "talas_math_sin",
+                                "cos" => "talas_math_cos",
+                                "tan" => "talas_math_tan",
+                                "asin" => "talas_math_asin",
+                                "acos" => "talas_math_acos",
+                                "atan" => "talas_math_atan",
+                                "atan2" => "talas_math_atan2",
+                                "radians" => "talas_math_radians",
+                                "degrees" => "talas_math_degrees",
+                                "log" => "talas_math_log",
+                                "log10" => "talas_math_log10",
+                                "log2" => "talas_math_log2",
+                                "exp" => "talas_math_exp",
+                                "isNaN" => "talas_math_is_nan",
+                                "isInfinite" => "talas_math_is_infinite",
+                                "isFinite" => "talas_math_is_finite",
+                                "isEven" => "talas_math_is_even",
+                                "isOdd" => "talas_math_is_odd",
+                                "gcd" => "talas_math_gcd",
+                                "lcm" => "talas_math_lcm",
+                                _ => "talas_math_pi",
+                            };
+                            let dest = self.fresh_reg();
+                            let ret_ty = match member.as_str() {
+                                "sign" | "gcd" | "lcm" => Type::Int,
+                                "isNaN" | "isInfinite" | "isFinite" | "isEven" | "isOdd" => Type::Bool,
+                                _ => Type::Decimal,
+                            };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: arg_ops,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "Random" || ["int", "decimal", "bool", "uuid", "bytes"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "int" => "talas_random_int",
+                                "decimal" => "talas_random_decimal",
+                                "bool" => "talas_random_bool",
+                                "uuid" => "talas_random_uuid",
+                                "bytes" => "talas_random_bytes",
+                                _ => "talas_random_int",
+                            };
+                            let dest = self.fresh_reg();
+                            let ret_ty = match member.as_str() {
+                                "int" => Type::Int,
+                                "decimal" => Type::Decimal,
+                                "bool" => Type::Bool,
+                                "uuid" => Type::String,
+                                _ => Type::Class { name: "List".into() },
+                            };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: arg_ops,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "SecureRandom" || member == "bytes" {
+                            let dest = self.fresh_reg();
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: "talas_securerandom_bytes".into(),
+                                args: arg_ops,
+                                ret_ty: Type::Class { name: "List".into() },
+                            });
+                            return IrOperand::Register(dest, Type::Class { name: "List".into() });
+                        }
+
+                        if class_name == "Statistics" || ["mean", "median", "variance", "standardDeviation", "percentile", "covariance", "correlation"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "mean" => "talas_statistics_mean",
+                                "median" => "talas_statistics_median",
+                                "variance" => "talas_statistics_variance",
+                                "standardDeviation" => "talas_statistics_std_dev",
+                                "percentile" => "talas_statistics_percentile",
+                                "covariance" => "talas_statistics_covariance",
+                                "correlation" => "talas_statistics_correlation",
+                                _ => "talas_statistics_mean",
+                            };
+                            let dest = self.fresh_reg();
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: arg_ops,
+                                ret_ty: Type::Decimal,
+                            });
+                            return IrOperand::Register(dest, Type::Decimal);
+                        }
+
+                        if class_name == "Probability" || ["factorial", "permutations", "combinations", "normal", "binomial", "poisson", "uniform"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "factorial" => "talas_probability_factorial",
+                                "permutations" => "talas_probability_permutations",
+                                "combinations" => "talas_probability_combinations",
+                                "normal" => "talas_probability_normal",
+                                "binomial" => "talas_probability_binomial",
+                                "poisson" => "talas_probability_poisson",
+                                "uniform" => "talas_probability_uniform",
+                                _ => "talas_probability_factorial",
+                            };
+                            let dest = self.fresh_reg();
+                            let ret_ty = match member.as_str() {
+                                "factorial" | "permutations" | "combinations" => Type::Int,
+                                _ => Type::Decimal,
+                            };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: arg_ops,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "File" || ["open", "read", "write", "append", "delete", "exists", "info", "close"].contains(&member.as_str()) {
+                            let is_inst = obj_op.get_type() == (Type::Class { name: "File".into() });
+                            let symbol = match member.as_str() {
+                                "open" => "talas_file_open",
+                                "read" => "talas_file_read",
+                                "write" => "talas_file_write",
+                                "append" => "talas_file_append",
+                                "delete" => "talas_file_delete",
+                                "exists" => "talas_file_exists",
+                                "info" => "talas_file_info",
+                                "close" => "talas_file_close",
+                                _ => "talas_file_read",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = Vec::new();
+                            if is_inst {
+                                call_args.push(obj_op);
+                            }
+                            call_args.extend(arg_ops);
+                            let ret_ty = match member.as_str() {
+                                "open" => Type::Class { name: "File".into() },
+                                "read" => Type::String,
+                                "exists" => Type::Bool,
+                                "info" => Type::Class { name: "FileInfo".into() },
+                                _ => Type::Void,
+                            };
+                            let dest_opt = if ret_ty == Type::Void { None } else { Some(dest) };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: dest_opt,
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return if ret_ty == Type::Void { IrOperand::Null } else { IrOperand::Register(dest, ret_ty) };
+                        }
+
+                        if class_name == "FileInfo" || ["size", "createdAt", "modifiedAt", "isDirectory"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "size" => "talas_fileinfo_size",
+                                "createdAt" => "talas_fileinfo_created_at",
+                                "modifiedAt" => "talas_fileinfo_modified_at",
+                                "isDirectory" => "talas_fileinfo_is_directory",
+                                _ => "talas_fileinfo_size",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = vec![obj_op];
+                            call_args.extend(arg_ops);
+                            let ret_ty = match member.as_str() {
+                                "size" => Type::Long,
+                                "createdAt" | "modifiedAt" => Type::Class { name: "DateTime".into() },
+                                "isDirectory" => Type::Bool,
+                                _ => Type::Long,
+                            };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "Directory" || ["create", "delete", "list"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "create" => "talas_directory_create",
+                                "delete" => "talas_directory_delete",
+                                "list" => "talas_directory_list",
+                                _ => "talas_directory_create",
+                            };
+                            let dest = self.fresh_reg();
+                            let ret_ty = if member == "list" { Type::Class { name: "List".into() } } else { Type::Void };
+                            let dest_opt = if ret_ty == Type::Void { None } else { Some(dest) };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: dest_opt,
+                                symbol: symbol.into(),
+                                args: arg_ops,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return if ret_ty == Type::Void { IrOperand::Null } else { IrOperand::Register(dest, ret_ty) };
+                        }
+
+                        if class_name == "Path" || ["join", "filename", "extension"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "join" => "talas_path_join",
+                                "filename" => "talas_path_filename",
+                                "extension" => "talas_path_extension",
+                                _ => "talas_path_join",
+                            };
+                            let dest = self.fresh_reg();
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: arg_ops,
+                                ret_ty: Type::String,
+                            });
+                            return IrOperand::Register(dest, Type::String);
+                        }
+
+                        if class_name == "Server" || ["get", "post", "put", "patch", "delete", "options", "head", "use", "static", "websocket", "start", "stop", "port", "tls", "enableHttp2", "enableHttp3"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "start" => "talas_server_start",
+                                "stop" => "talas_server_stop",
+                                "port" => "talas_server_port",
+                                "tls" => "talas_server_tls",
+                                "use" => "talas_server_use",
+                                "enableHttp2" => "talas_server_enable_http2",
+                                "enableHttp3" => "talas_server_enable_http3",
+                                _ => "talas_server_route",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = vec![obj_op];
+                            call_args.extend(arg_ops);
+                            let ret_ty = if member == "port" { Type::Int } else { Type::Void };
+                            let dest_opt = if ret_ty == Type::Void { None } else { Some(dest) };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: dest_opt,
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return if ret_ty == Type::Void { IrOperand::Null } else { IrOperand::Register(dest, ret_ty) };
+                        }
+
+                        if class_name == "Request" || ["path", "pathLong", "pathInt", "query", "queryDecimal", "header", "cookie", "hasBearerToken", "body", "method", "url", "ip", "protocol", "isHttp3"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "pathLong" => "talas_request_path_long",
+                                "pathInt" => "talas_request_path_int",
+                                "query" => "talas_request_query",
+                                "header" => "talas_request_header",
+                                "hasBearerToken" => "talas_request_has_bearer_token",
+                                "protocol" => "talas_request_protocol",
+                                "isHttp3" => "talas_request_is_http3",
+                                _ => "talas_request_path",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = vec![obj_op];
+                            call_args.extend(arg_ops);
+                            let ret_ty = match member.as_str() {
+                                "pathLong" => Type::Long,
+                                "pathInt" => Type::Int,
+                                "hasBearerToken" | "isHttp3" => Type::Bool,
+                                _ => Type::String,
+                            };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "Response" || ["ok", "json", "html", "text", "created", "notFound", "internalServerError", "unauthorized", "redirect", "status"].contains(&member.as_str()) {
+                            let status_code = match member.as_str() {
+                                "created" => 201,
+                                "notFound" => 404,
+                                "unauthorized" => 401,
+                                "internalServerError" => 500,
+                                _ => 200,
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = vec![IrOperand::ConstantInt(status_code)];
+                            call_args.extend(arg_ops);
+                            let ret_ty = Type::Class { name: "Response".into() };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: "talas_response_create".into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "WebSocket" || ["onMessage", "send", "close"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "onMessage" => "talas_websocket_on_message",
+                                "send" => "talas_websocket_send",
+                                _ => "talas_websocket_send",
+                            };
+                            let mut call_args = vec![obj_op];
+                            call_args.extend(arg_ops);
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: None,
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: Type::Void,
+                            });
+                            return IrOperand::Null;
+                        }
+
+                        if class_name == "Json" || ["parse", "partialParse", "stringify", "from", "to"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "parse" | "partialParse" => "talas_json_parse",
+                                "stringify" | "from" => "talas_json_stringify",
+                                _ => "talas_json_parse",
+                            };
+                            let dest = self.fresh_reg();
+                            let ret_ty = if member == "stringify" || member == "from" { Type::String } else { Type::Class { name: "JsonObject".into() } };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: arg_ops,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "JsonObject" || ["getString", "getInt", "getLong", "getDecimal", "getBool", "getObject", "getArray"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "getString" => "talas_jsonobject_get_string",
+                                "getInt" => "talas_jsonobject_get_int",
+                                "getLong" => "talas_jsonobject_get_long",
+                                "getDecimal" => "talas_jsonobject_get_decimal",
+                                "getBool" => "talas_jsonobject_get_bool",
+                                _ => "talas_jsonobject_get_string",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = vec![obj_op];
+                            call_args.extend(arg_ops);
+                            let ret_ty = match member.as_str() {
+                                "getInt" => Type::Int,
+                                "getLong" => Type::Long,
+                                "getDecimal" => Type::Decimal,
+                                "getBool" => Type::Bool,
+                                "getObject" => Type::Class { name: "JsonObject".into() },
+                                "getArray" => Type::Class { name: "JsonArray".into() },
+                                _ => Type::String,
+                            };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "Xml" || ["parse", "partialParse", "create", "stringify", "from", "to"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "parse" | "partialParse" => "talas_xml_parse",
+                                "create" => "talas_xml_create",
+                                _ => "talas_xml_parse",
+                            };
+                            let dest = self.fresh_reg();
+                            let ret_ty = Type::Class { name: "XmlDocument".into() };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: arg_ops,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "XmlDocument" || ["root", "toString"].contains(&member.as_str()) {
+                            let symbol = match member.as_str() {
+                                "root" => "talas_xmldocument_root",
+                                "toString" => "talas_xmldocument_to_string",
+                                _ => "talas_xmldocument_root",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = vec![obj_op];
+                            call_args.extend(arg_ops);
+                            let ret_ty = if member == "toString" { Type::String } else { Type::Class { name: "XmlElement".into() } };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "XmlElement" || ["child", "element", "text", "getText"].contains(&member.as_str()) {
+                            let is_text_getter = member == "text" && arg_ops.is_empty();
+                            let symbol = match member.as_str() {
+                                "child" => "talas_xmlement_child",
+                                "element" => "talas_xmlement_element",
+                                "text" => if is_text_getter { "talas_xmlement_get_text" } else { "talas_xmlement_text" },
+                                "getText" => "talas_xmlement_get_text",
+                                _ => "talas_xmlement_child",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = vec![obj_op];
+                            call_args.extend(arg_ops);
+                            let ret_ty = if is_text_getter || member == "getText" { Type::String } else { Type::Class { name: "XmlElement".into() } };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
                         let mut target_method = member.clone();
 
                         if member == "getHeader" {
@@ -976,6 +1596,29 @@ impl IrBuilder {
                             IrOperand::Register(dest, ret_ty)
                         }
                     }
+                    ExprKind::Identifier(class_name) => {
+                        let symbol = match class_name.as_str() {
+                            "Money" => "talas_money_create",
+                            "Percent" => "talas_percent_create",
+                            "Rate" => "talas_rate_create",
+                            "GeoPoint" => "talas_geopoint_create",
+                            "GeoBounds" => "talas_geobounds_create",
+                            "Distance" => "talas_distance_create_meters",
+                            "Server" => "talas_server_create",
+                            "Cookie" => "talas_cookie_create",
+                            "LocationPermissionError" | "LocationUnavailableError" | "FileError" | "FileNotFoundError" | "PermissionError" | "AlreadyExistsError" | "InvalidPathError" | "DiskFullError" | "JsonError" | "JsonParseError" | "MissingFieldError" | "InvalidTypeError" | "XmlError" | "XmlParseError" => "talas_generic_error_create",
+                            _ => "talas_money_create",
+                        };
+                        let dest = self.fresh_reg();
+                        let ret_ty = Type::Class { name: class_name.clone() };
+                        self.emit(IrInstruction::CallRuntime {
+                            dest: Some(dest),
+                            symbol: symbol.into(),
+                            args: arg_ops,
+                            ret_ty: ret_ty.clone(),
+                        });
+                        IrOperand::Register(dest, ret_ty)
+                    }
                     _ => {
                         self.diagnostics.push(Diagnostic::error(
                             "direct function calls are not supported",
@@ -998,6 +1641,21 @@ impl IrBuilder {
                     Type::Class { name } => name,
                     _ => "".into(),
                 };
+                if class_name == "Math" && (member == "PI" || member == "E" || member == "TAU") {
+                    let symbol = match member.as_str() {
+                        "PI" => "talas_math_pi",
+                        "E" => "talas_math_e",
+                        "TAU" => "talas_math_tau",
+                        _ => "talas_math_pi",
+                    };
+                    self.emit(IrInstruction::CallRuntime {
+                        dest: Some(dest),
+                        symbol: symbol.into(),
+                        args: vec![],
+                        ret_ty: Type::Decimal,
+                    });
+                    return IrOperand::Register(dest, Type::Decimal);
+                }
                 if let Some((idx, field_ty)) = self.class_field_indices.get(&(class_name.clone(), member.clone())).cloned() {
                     if let IrOperand::Register(ptr, _) = obj_op {
                         self.emit(IrInstruction::GetField {

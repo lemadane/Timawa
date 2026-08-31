@@ -325,6 +325,7 @@ impl<'a> Lexer<'a> {
             "async" => TokenKind::Async,
             "await" => TokenKind::Await,
             "awaitAndCancel" => TokenKind::AwaitAndCancel,
+            "after" => TokenKind::After,
             "string" => TokenKind::StringType,
             "int" => TokenKind::IntType,
             "decimal" => TokenKind::DecimalType,

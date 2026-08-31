@@ -83,7 +83,149 @@ impl TextualLlvmEmitter {
         self.output.push_str("declare i64 @talas_datetime_diff_seconds(i8*, i8*)\n");
         self.output.push_str("declare i8* @talas_datetime_format(i8*, i8*)\n");
         self.output.push_str("declare i8* @talas_duration_create(i64)\n");
-        self.output.push_str("declare i64 @talas_duration_total_seconds(i8*)\n\n");
+        self.output.push_str("declare i64 @talas_duration_total_seconds(i8*)\n");
+        self.output.push_str("declare i8* @talas_currency_create(i8*)\n");
+        self.output.push_str("declare i8* @talas_currency_code(i8*)\n");
+        self.output.push_str("declare i8* @talas_money_create(double, i8*)\n");
+        self.output.push_str("declare i8* @talas_money_php(double)\n");
+        self.output.push_str("declare i8* @talas_money_usd(double)\n");
+        self.output.push_str("declare i8* @talas_money_eur(double)\n");
+        self.output.push_str("declare i8* @talas_money_jpy(double)\n");
+        self.output.push_str("declare i8* @talas_money_gbp(double)\n");
+        self.output.push_str("declare double @talas_money_amount(i8*)\n");
+        self.output.push_str("declare i8* @talas_money_currency(i8*)\n");
+        self.output.push_str("declare i8* @talas_money_add(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_money_subtract(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_money_multiply_percent(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_exchange_convert(i8*, i8*, double)\n");
+        self.output.push_str("declare i8* @talas_percent_create(double)\n");
+        self.output.push_str("declare double @talas_percent_value(i8*)\n");
+        self.output.push_str("declare i8* @talas_rate_create(double)\n");
+        self.output.push_str("declare double @talas_rate_value(i8*)\n");
+        self.output.push_str("declare i8* @talas_geopoint_create(double, double)\n");
+        self.output.push_str("declare double @talas_geopoint_latitude(i8*)\n");
+        self.output.push_str("declare double @talas_geopoint_longitude(i8*)\n");
+        self.output.push_str("declare i8* @talas_geopoint_distance_to(i8*, i8*)\n");
+        self.output.push_str("declare double @talas_geopoint_bearing_to(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_distance_create_meters(double)\n");
+        self.output.push_str("declare i8* @talas_distance_create_km(double)\n");
+        self.output.push_str("declare i8* @talas_distance_create_miles(double)\n");
+        self.output.push_str("declare double @talas_distance_meters(i8*)\n");
+        self.output.push_str("declare double @talas_distance_km(i8*)\n");
+        self.output.push_str("declare double @talas_distance_miles(i8*)\n");
+        self.output.push_str("declare i8* @talas_geobounds_create(i8*, i8*)\n");
+        self.output.push_str("declare i1 @talas_geobounds_contains(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_geolocation_current()\n");
+        self.output.push_str("declare double @talas_math_pi()\n");
+        self.output.push_str("declare double @talas_math_e()\n");
+        self.output.push_str("declare double @talas_math_tau()\n");
+        self.output.push_str("declare double @talas_math_abs(double)\n");
+        self.output.push_str("declare double @talas_math_min(double, double)\n");
+        self.output.push_str("declare double @talas_math_max(double, double)\n");
+        self.output.push_str("declare double @talas_math_sqrt(double)\n");
+        self.output.push_str("declare double @talas_math_cbrt(double)\n");
+        self.output.push_str("declare double @talas_math_pow(double, double)\n");
+        self.output.push_str("declare double @talas_math_floor(double)\n");
+        self.output.push_str("declare double @talas_math_ceil(double)\n");
+        self.output.push_str("declare double @talas_math_round(double)\n");
+        self.output.push_str("declare double @talas_math_round_decimals(double, i64)\n");
+        self.output.push_str("declare double @talas_math_truncate(double)\n");
+        self.output.push_str("declare double @talas_math_clamp(double, double, double)\n");
+        self.output.push_str("declare i64 @talas_math_sign(double)\n");
+        self.output.push_str("declare double @talas_math_sin(double)\n");
+        self.output.push_str("declare double @talas_math_cos(double)\n");
+        self.output.push_str("declare double @talas_math_tan(double)\n");
+        self.output.push_str("declare double @talas_math_asin(double)\n");
+        self.output.push_str("declare double @talas_math_acos(double)\n");
+        self.output.push_str("declare double @talas_math_atan(double)\n");
+        self.output.push_str("declare double @talas_math_atan2(double, double)\n");
+        self.output.push_str("declare double @talas_math_radians(double)\n");
+        self.output.push_str("declare double @talas_math_degrees(double)\n");
+        self.output.push_str("declare double @talas_math_log(double)\n");
+        self.output.push_str("declare double @talas_math_log10(double)\n");
+        self.output.push_str("declare double @talas_math_log2(double)\n");
+        self.output.push_str("declare double @talas_math_exp(double)\n");
+        self.output.push_str("declare i1 @talas_math_is_nan(double)\n");
+        self.output.push_str("declare i1 @talas_math_is_infinite(double)\n");
+        self.output.push_str("declare i1 @talas_math_is_finite(double)\n");
+        self.output.push_str("declare i1 @talas_math_is_even(i64)\n");
+        self.output.push_str("declare i1 @talas_math_is_odd(i64)\n");
+        self.output.push_str("declare i64 @talas_math_gcd(i64, i64)\n");
+        self.output.push_str("declare i64 @talas_math_lcm(i64, i64)\n");
+        self.output.push_str("declare i64 @talas_random_int(i64, i64)\n");
+        self.output.push_str("declare double @talas_random_decimal()\n");
+        self.output.push_str("declare i1 @talas_random_bool()\n");
+        self.output.push_str("declare i8* @talas_random_uuid()\n");
+        self.output.push_str("declare i8* @talas_random_bytes(i64)\n");
+        self.output.push_str("declare i8* @talas_securerandom_bytes(i64)\n");
+        self.output.push_str("declare double @talas_statistics_mean(i8*)\n");
+        self.output.push_str("declare double @talas_statistics_median(i8*)\n");
+        self.output.push_str("declare double @talas_statistics_variance(i8*)\n");
+        self.output.push_str("declare double @talas_statistics_std_dev(i8*)\n");
+        self.output.push_str("declare double @talas_statistics_percentile(i8*, double)\n");
+        self.output.push_str("declare double @talas_statistics_covariance(i8*, i8*)\n");
+        self.output.push_str("declare double @talas_statistics_correlation(i8*, i8*)\n");
+        self.output.push_str("declare i64 @talas_probability_factorial(i64)\n");
+        self.output.push_str("declare i64 @talas_probability_permutations(i64, i64)\n");
+        self.output.push_str("declare i64 @talas_probability_combinations(i64, i64)\n");
+        self.output.push_str("declare double @talas_probability_normal(double, double, double)\n");
+        self.output.push_str("declare double @talas_probability_binomial(i64, i64, double)\n");
+        self.output.push_str("declare double @talas_probability_poisson(i64, double)\n");
+        self.output.push_str("declare double @talas_probability_uniform(double, double, double)\n");
+        self.output.push_str("declare i8* @talas_file_open(i8*)\n");
+        self.output.push_str("declare i8* @talas_file_read(i8*)\n");
+        self.output.push_str("declare void @talas_file_write(i8*, i8*)\n");
+        self.output.push_str("declare void @talas_file_append(i8*, i8*)\n");
+        self.output.push_str("declare void @talas_file_delete(i8*)\n");
+        self.output.push_str("declare i1 @talas_file_exists(i8*)\n");
+        self.output.push_str("declare void @talas_file_close(i8*)\n");
+        self.output.push_str("declare i8* @talas_file_info(i8*)\n");
+        self.output.push_str("declare i64 @talas_fileinfo_size(i8*)\n");
+        self.output.push_str("declare i8* @talas_fileinfo_created_at(i8*)\n");
+        self.output.push_str("declare i8* @talas_fileinfo_modified_at(i8*)\n");
+        self.output.push_str("declare i1 @talas_fileinfo_is_directory(i8*)\n");
+        self.output.push_str("declare void @talas_directory_create(i8*)\n");
+        self.output.push_str("declare void @talas_directory_delete(i8*)\n");
+        self.output.push_str("declare i8* @talas_directory_list(i8*)\n");
+        self.output.push_str("declare i8* @talas_path_join(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_path_filename(i8*)\n");
+        self.output.push_str("declare i8* @talas_path_extension(i8*)\n");
+        self.output.push_str("declare i8* @talas_server_create()\n");
+        self.output.push_str("declare void @talas_server_start(i8*, i32)\n");
+        self.output.push_str("declare void @talas_server_stop(i8*)\n");
+        self.output.push_str("declare i32 @talas_server_port(i8*)\n");
+        self.output.push_str("declare void @talas_server_tls(i8*, i8*, i8*)\n");
+        self.output.push_str("declare void @talas_server_route(i8*, i8*, i64)\n");
+        self.output.push_str("declare void @talas_server_use(i8*, i64)\n");
+        self.output.push_str("declare i8* @talas_request_path(i8*, i8*)\n");
+        self.output.push_str("declare i32 @talas_request_path_int(i8*, i8*)\n");
+        self.output.push_str("declare i64 @talas_request_path_long(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_request_query(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_request_header(i8*, i8*)\n");
+        self.output.push_str("declare i1 @talas_request_has_bearer_token(i8*)\n");
+        self.output.push_str("declare i8* @talas_response_create(i32, i8*)\n");
+        self.output.push_str("declare i8* @talas_cookie_create(i8*, i8*)\n");
+        self.output.push_str("declare void @talas_websocket_send(i8*, i8*)\n");
+        self.output.push_str("declare void @talas_websocket_on_message(i8*, i64)\n");
+        self.output.push_str("declare void @talas_server_enable_http2(i8*)\n");
+        self.output.push_str("declare void @talas_server_enable_http3(i8*, i32)\n");
+        self.output.push_str("declare i8* @talas_request_protocol(i8*)\n");
+        self.output.push_str("declare i1 @talas_request_is_http3(i8*)\n");
+        self.output.push_str("declare i8* @talas_json_parse(i8*)\n");
+        self.output.push_str("declare i8* @talas_json_stringify(i8*)\n");
+        self.output.push_str("declare i8* @talas_jsonobject_get_string(i8*, i8*)\n");
+        self.output.push_str("declare i32 @talas_jsonobject_get_int(i8*, i8*)\n");
+        self.output.push_str("declare i64 @talas_jsonobject_get_long(i8*, i8*)\n");
+        self.output.push_str("declare double @talas_jsonobject_get_decimal(i8*, i8*)\n");
+        self.output.push_str("declare i1 @talas_jsonobject_get_bool(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_xml_parse(i8*)\n");
+        self.output.push_str("declare i8* @talas_xml_create(i8*)\n");
+        self.output.push_str("declare i8* @talas_xmldocument_root(i8*)\n");
+        self.output.push_str("declare i8* @talas_xmldocument_to_string(i8*)\n");
+        self.output.push_str("declare i8* @talas_xmlement_child(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_xmlement_element(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_xmlement_text(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_xmlement_get_text(i8*)\n\n");
 
         let mut declared_types: HashSet<String> = ir_program.classes.iter().map(|c| c.name.clone()).collect();
 
@@ -108,6 +250,49 @@ impl TextualLlvmEmitter {
             ("Map", "i8*"),
             ("DateTime", "i64, i32, i8*"),
             ("Duration", "i64"),
+            ("Currency", "i8*"),
+            ("Money", "double, i8*"),
+            ("Exchange", "i8*"),
+            ("Percent", "double"),
+            ("Rate", "double"),
+            ("GeoPoint", "double, double"),
+            ("Distance", "double"),
+            ("GeoBounds", "i8*, i8*"),
+            ("Geolocation", "i8*"),
+            ("LocationPermissionError", "i8*"),
+            ("LocationUnavailableError", "i8*"),
+            ("Math", "i8*"),
+            ("Random", "i8*"),
+            ("SecureRandom", "i8*"),
+            ("Statistics", "i8*"),
+            ("Probability", "i8*"),
+            ("File", "i8*, i1"),
+            ("FileInfo", "i64, i8*, i8*, i1"),
+            ("Directory", "i8*"),
+            ("Path", "i8*"),
+            ("FileError", "i8*"),
+            ("FileNotFoundError", "i8*"),
+            ("PermissionError", "i8*"),
+            ("AlreadyExistsError", "i8*"),
+            ("InvalidPathError", "i8*"),
+            ("DiskFullError", "i8*"),
+            ("Server", "i32, i1"),
+            ("Request", "i8*, i8*"),
+            ("Response", "i32, i8*"),
+            ("Cookie", "i8*, i8*"),
+            ("WebSocket", "i64"),
+            ("Json", "i8*"),
+            ("JsonObject", "i64"),
+            ("JsonArray", "i64"),
+            ("Xml", "i8*"),
+            ("XmlDocument", "i64"),
+            ("XmlElement", "i64"),
+            ("JsonError", "i8*"),
+            ("JsonParseError", "i8*"),
+            ("MissingFieldError", "i8*"),
+            ("InvalidTypeError", "i8*"),
+            ("XmlError", "i8*"),
+            ("XmlParseError", "i8*"),
         ];
 
         for (name, fields) in builtins {

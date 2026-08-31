@@ -40,6 +40,7 @@ pub enum TokenKind {
     Async,
     Await,
     AwaitAndCancel,
+    After,
 
     // Primitive Type Keywords
     StringType,

@@ -1,8 +1,11 @@
 pub mod collections;
 pub mod concurrency;
 pub mod datetime;
+pub mod financial;
 pub mod gc;
+pub mod geo;
 pub mod io;
+pub mod math;
 pub mod memory;
 pub mod strings;
 

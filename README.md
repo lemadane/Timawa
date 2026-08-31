@@ -2,7 +2,7 @@
 
 > **Sharp, simple, native.**
 
-[![Language Specification](https://img.shields.io/badge/spec-v0.4.0-blue.svg)](LANGUAGE_SPEC_DRAFT.md)
+[![Language Specification](https://img.shields.io/badge/spec-v0.5.0-blue.svg)](LANGUAGE_SPEC_DRAFT.md)
 [![Compiler Status](https://img.shields.io/badge/compiler-Rust%20%2B%20LLVM-orange.svg)](ARCHITECTURE.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -102,6 +102,12 @@
 - **Unix Timestamps & Timezones**: `dt.timestamp()`, `dt.unix()`, `dt.unixMillis()`, `dt.unixNanos()`, `DateTime.fromUnix(sec)`, `DateTime.fromUnixMillis(ms)`.
 - **Dedicated `Duration` Class**: `Duration.seconds(n)`, `Duration.minutes(n)`, `Duration.hours(n)`, `Duration.days(n)` cleanly represents time amounts (`dt.addDuration(duration)`).
 
+### 18. Financial Standard Library (`Money`, `Currency`, `Exchange`, `Percent`, `Rate`)
+- **Immutability & Fixed-Point Precision**: `Money` values are immutable and backed by exact decimal arithmetic (never binary floating-point rounding errors).
+- **Currency Safety**: `subtotal.add(shipping)` and `total.subtract(discount)` strictly enforce matching currencies. Mismatched currencies raise a runtime error unless explicitly converted via `Exchange.convert(dollar, Currency.PHP, rate)`.
+- **Standard Currencies**: `Currency.PHP`, `Currency.USD`, `Currency.EUR`, `Currency.JPY`, `Currency.GBP`.
+- **Financial Percentages & Rates**: `Percent(12)` and `Rate.percent(5.5)` for tax, interest, and discount calculations (`price.multiply(vat)`).
+
 ---
 
 ## VS Code Extension & Syntax Highlighting
@@ -123,7 +129,7 @@ xcopy /E /I editors\vscode %USERPROFILE%\.vscode\extensions\talas-vscode
 ```bash
 cd editors/vscode
 npx vsce package
-code --install-extension talas-vscode-0.4.0.vsix
+code --install-extension talas-vscode-0.5.0.vsix
 ```
 
 ---
@@ -688,6 +694,33 @@ class Application {
         final timeout = Duration.seconds(30)
         final expires = start.addDuration(timeout)
         print(`Expires in: ${expires.diffSeconds(start)} seconds`)
+    }
+}
+```
+
+### 15. Financial Standard Library (`Money`, `Currency`, `Exchange`, `Percent`, `Rate`)
+
+```java
+class Application {
+    main() {
+        // 1. Immutable Financial Money Creation
+        final price = Money.php(1250.75)
+        final dollar = Money.usd(100.00)
+        print(`Price amount: ${price.amount()}, Currency: ${price.currency().code()}`)
+
+        // 2. Currency-Safe Arithmetic
+        final shipping = Money.php(100.00)
+        final total = price.add(shipping)
+        print(`Total PHP amount: ${total.amount()}`)
+
+        // 3. Explicit Currency Conversion via Exchange
+        final converted = Exchange.convert(dollar, Currency.PHP, 58.50)
+        print(`100 USD converted to PHP: ${converted.amount()}`)
+
+        // 4. Financial Percentages & Taxes
+        final vat = Percent(12)
+        final tax = total.multiply(vat)
+        print(`VAT Tax amount: ${tax.amount()}`)
     }
 }
 ```

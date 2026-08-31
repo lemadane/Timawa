@@ -1,4 +1,4 @@
-# Talas Language Specification Baseline (Draft v0.4.0)
+# Talas Language Specification Baseline (Draft v0.5.0)
 
 ```text
 Name: Talas Programming Language
