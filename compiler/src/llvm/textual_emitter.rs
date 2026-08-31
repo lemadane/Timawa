@@ -58,7 +58,32 @@ impl TextualLlvmEmitter {
         self.output.push_str("declare i64 @talas_task_await_timeout_cancel(i8*, i64)\n");
         self.output.push_str("declare i8* @talas_channel_create()\n");
         self.output.push_str("declare void @talas_channel_send(i8*, i64)\n");
-        self.output.push_str("declare i64 @talas_channel_recv(i8*)\n\n");
+        self.output.push_str("declare i64 @talas_channel_recv(i8*)\n");
+        self.output.push_str("declare i8* @talas_datetime_now()\n");
+        self.output.push_str("declare i8* @talas_datetime_utc()\n");
+        self.output.push_str("declare i8* @talas_datetime_from_unix(i64)\n");
+        self.output.push_str("declare i8* @talas_datetime_from_unix_millis(i64)\n");
+        self.output.push_str("declare i8* @talas_datetime_of(i64, i64, i64, i64, i64)\n");
+        self.output.push_str("declare i8* @talas_datetime_date(i64, i64, i64)\n");
+        self.output.push_str("declare i8* @talas_datetime_time(i64, i64)\n");
+        self.output.push_str("declare i8* @talas_datetime_parse(i8*)\n");
+        self.output.push_str("declare i64 @talas_datetime_year(i8*)\n");
+        self.output.push_str("declare i64 @talas_datetime_month(i8*)\n");
+        self.output.push_str("declare i64 @talas_datetime_day(i8*)\n");
+        self.output.push_str("declare i64 @talas_datetime_hour(i8*)\n");
+        self.output.push_str("declare i64 @talas_datetime_minute(i8*)\n");
+        self.output.push_str("declare i64 @talas_datetime_second(i8*)\n");
+        self.output.push_str("declare i64 @talas_datetime_timestamp(i8*)\n");
+        self.output.push_str("declare i64 @talas_datetime_unix(i8*)\n");
+        self.output.push_str("declare i64 @talas_datetime_unix_millis(i8*)\n");
+        self.output.push_str("declare i64 @talas_datetime_unix_nanos(i8*)\n");
+        self.output.push_str("declare i8* @talas_datetime_zone(i8*)\n");
+        self.output.push_str("declare i8* @talas_datetime_in_zone(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_datetime_add_seconds(i8*, i64)\n");
+        self.output.push_str("declare i64 @talas_datetime_diff_seconds(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_datetime_format(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_duration_create(i64)\n");
+        self.output.push_str("declare i64 @talas_duration_total_seconds(i8*)\n\n");
 
         let mut declared_types: HashSet<String> = ir_program.classes.iter().map(|c| c.name.clone()).collect();
 
@@ -81,6 +106,8 @@ impl TextualLlvmEmitter {
             ("Channel", "i8*"),
             ("List", "i8*"),
             ("Map", "i8*"),
+            ("DateTime", "i64, i32, i8*"),
+            ("Duration", "i64"),
         ];
 
         for (name, fields) in builtins {

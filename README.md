@@ -2,7 +2,7 @@
 
 > **Sharp, simple, native.**
 
-[![Language Specification](https://img.shields.io/badge/spec-v0.2.0-blue.svg)](LANGUAGE_SPEC_DRAFT.md)
+[![Language Specification](https://img.shields.io/badge/spec-v0.4.0-blue.svg)](LANGUAGE_SPEC_DRAFT.md)
 [![Compiler Status](https://img.shields.io/badge/compiler-Rust%20%2B%20LLVM-orange.svg)](ARCHITECTURE.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -96,6 +96,12 @@
 - **Compiler Lowering**: Lowered to synthetic, immutable single-method closure classes.
 - **Method References**: `this.methodName` syntax for instance method callbacks.
 
+### 17. Unified `DateTime` (`Instant` + Timezone) & `Duration` Standard Library
+- **Single `DateTime` Class**: Eliminates Java's multi-class date/time API clutter (`Date`, `Time`, `LocalDate`, `LocalTime`, `LocalDateTime`, `ZonedDateTime`, `Instant`). One unified `DateTime` represents both the exact UTC Instant and its timezone display.
+- **Instant Invariance**: `manila.in("Asia/Tokyo")` changes displayed clock time (`17:00` vs `18:00`) while preserving `manila.timestamp() == tokyo.timestamp()` (representing the exact same instant).
+- **Unix Timestamps & Timezones**: `dt.timestamp()`, `dt.unix()`, `dt.unixMillis()`, `dt.unixNanos()`, `DateTime.fromUnix(sec)`, `DateTime.fromUnixMillis(ms)`.
+- **Dedicated `Duration` Class**: `Duration.seconds(n)`, `Duration.minutes(n)`, `Duration.hours(n)`, `Duration.days(n)` cleanly represents time amounts (`dt.addDuration(duration)`).
+
 ---
 
 ## VS Code Extension & Syntax Highlighting
@@ -117,7 +123,7 @@ xcopy /E /I editors\vscode %USERPROFILE%\.vscode\extensions\talas-vscode
 ```bash
 cd editors/vscode
 npx vsce package
-code --install-extension talas-vscode-0.2.0.vsix
+code --install-extension talas-vscode-0.4.0.vsix
 ```
 
 ---
@@ -656,6 +662,32 @@ class Application {
                 print(`Caught error message: ${err.message()}`)
             }
         }
+    }
+}
+```
+
+### 14. Unified `DateTime` (`Instant` + Timezone) & `Duration` Standard Library
+
+```java
+class Application {
+    main() {
+        // 1. Instant + Timezone Creation
+        final manila = DateTime.of(2026, 8, 31, 17, 0, `Asia/Manila`)
+        final tokyo = manila.in(`Asia/Tokyo`)
+
+        // 2. Instant Invariance (Timestamps match 100%, displayed clock hours differ)
+        print(`Timestamps equal: ${manila.timestamp() == tokyo.timestamp()}`) // true!
+        print(`Manila hour: ${manila.hour()}, Tokyo hour: ${tokyo.hour()}`)     // 17 vs 18
+
+        // 3. Unix Timestamps & Formatting
+        final dt = DateTime.fromUnix(1788159600)
+        print(`Formatted: ${dt.format(`yyyy-MM-dd HH:mm:ss`)}`)
+
+        // 4. Time Amounts with Duration
+        final start = DateTime.now()
+        final timeout = Duration.seconds(30)
+        final expires = start.addDuration(timeout)
+        print(`Expires in: ${expires.diffSeconds(start)} seconds`)
     }
 }
 ```

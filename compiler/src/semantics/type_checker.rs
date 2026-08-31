@@ -128,6 +128,67 @@ impl TypeChecker {
                 max_constructor_args: 0,
             },
         );
+
+        let mut datetime_methods = HashMap::new();
+        datetime_methods.insert("now".into(), (Vec::new(), Type::Class { name: "DateTime".into() }));
+        datetime_methods.insert("date".into(), (vec![Type::Int, Type::Int, Type::Int], Type::Class { name: "DateTime".into() }));
+        datetime_methods.insert("time".into(), (vec![Type::Int, Type::Int], Type::Class { name: "DateTime".into() }));
+        datetime_methods.insert("of".into(), (vec![Type::Int, Type::Int, Type::Int, Type::Int, Type::Int], Type::Class { name: "DateTime".into() }));
+        datetime_methods.insert("utc".into(), (Vec::new(), Type::Class { name: "DateTime".into() }));
+        datetime_methods.insert("parse".into(), (vec![Type::String], Type::Class { name: "DateTime".into() }));
+        datetime_methods.insert("fromUnix".into(), (vec![Type::Int], Type::Class { name: "DateTime".into() }));
+        datetime_methods.insert("fromUnixMillis".into(), (vec![Type::Int], Type::Class { name: "DateTime".into() }));
+
+        datetime_methods.insert("year".into(), (Vec::new(), Type::Int));
+        datetime_methods.insert("month".into(), (Vec::new(), Type::Int));
+        datetime_methods.insert("day".into(), (Vec::new(), Type::Int));
+        datetime_methods.insert("hour".into(), (Vec::new(), Type::Int));
+        datetime_methods.insert("minute".into(), (Vec::new(), Type::Int));
+        datetime_methods.insert("second".into(), (Vec::new(), Type::Int));
+        datetime_methods.insert("timestamp".into(), (Vec::new(), Type::Int));
+        datetime_methods.insert("unix".into(), (Vec::new(), Type::Int));
+        datetime_methods.insert("unixMillis".into(), (Vec::new(), Type::Int));
+        datetime_methods.insert("unixNanos".into(), (Vec::new(), Type::Int));
+        datetime_methods.insert("zone".into(), (Vec::new(), Type::String));
+        datetime_methods.insert("in".into(), (vec![Type::String], Type::Class { name: "DateTime".into() }));
+        datetime_methods.insert("addDays".into(), (vec![Type::Int], Type::Class { name: "DateTime".into() }));
+        datetime_methods.insert("addHours".into(), (vec![Type::Int], Type::Class { name: "DateTime".into() }));
+        datetime_methods.insert("addMinutes".into(), (vec![Type::Int], Type::Class { name: "DateTime".into() }));
+        datetime_methods.insert("addDuration".into(), (vec![Type::Class { name: "Duration".into() }], Type::Class { name: "DateTime".into() }));
+        datetime_methods.insert("diffSeconds".into(), (vec![Type::Class { name: "DateTime".into() }], Type::Int));
+        datetime_methods.insert("diffDays".into(), (vec![Type::Class { name: "DateTime".into() }], Type::Int));
+        datetime_methods.insert("format".into(), (vec![Type::String], Type::String));
+
+        self.classes.insert(
+            "DateTime".into(),
+            ClassInfo {
+                name: "DateTime".into(),
+                fields: HashMap::new(),
+                methods: datetime_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut duration_methods = HashMap::new();
+        duration_methods.insert("seconds".into(), (vec![Type::Int], Type::Class { name: "Duration".into() }));
+        duration_methods.insert("minutes".into(), (vec![Type::Int], Type::Class { name: "Duration".into() }));
+        duration_methods.insert("hours".into(), (vec![Type::Int], Type::Class { name: "Duration".into() }));
+        duration_methods.insert("days".into(), (vec![Type::Int], Type::Class { name: "Duration".into() }));
+        duration_methods.insert("totalSeconds".into(), (Vec::new(), Type::Int));
+
+        self.classes.insert(
+            "Duration".into(),
+            ClassInfo {
+                name: "Duration".into(),
+                fields: HashMap::new(),
+                methods: duration_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
     }
 
     pub fn check_program(&mut self, program: &Program) -> bool {
@@ -466,6 +527,8 @@ impl TypeChecker {
 
                 if let Some(sym) = self.symbol_table.lookup(name) {
                     Some(sym.ty.clone())
+                } else if self.classes.contains_key(name) {
+                    Some(Type::Class { name: name.clone() })
                 } else {
                     self.diagnostics.push(Diagnostic::error(
                         format!("Undeclared identifier '{}'", name),

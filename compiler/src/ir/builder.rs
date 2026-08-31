@@ -869,6 +869,75 @@ impl IrBuilder {
                             return IrOperand::Register(dest, ret_ty);
                         }
 
+                        if class_name == "DateTime" || member == "now" || member == "date" || member == "time" || member == "of" || member == "utc" || member == "parse" || member == "fromUnix" || member == "fromUnixMillis" {
+                            let symbol = match member.as_str() {
+                                "now" => "talas_datetime_now",
+                                "utc" => "talas_datetime_utc",
+                                "date" => "talas_datetime_date",
+                                "time" => "talas_datetime_time",
+                                "of" => "talas_datetime_of",
+                                "parse" => "talas_datetime_parse",
+                                "fromUnix" => "talas_datetime_from_unix",
+                                "fromUnixMillis" => "talas_datetime_from_unix_millis",
+                                "year" => "talas_datetime_year",
+                                "month" => "talas_datetime_month",
+                                "day" => "talas_datetime_day",
+                                "hour" => "talas_datetime_hour",
+                                "minute" => "talas_datetime_minute",
+                                "second" => "talas_datetime_second",
+                                "timestamp" => "talas_datetime_timestamp",
+                                "unix" => "talas_datetime_unix",
+                                "unixMillis" => "talas_datetime_unix_millis",
+                                "unixNanos" => "talas_datetime_unix_nanos",
+                                "zone" => "talas_datetime_zone",
+                                "in" => "talas_datetime_in_zone",
+                                "addDays" | "addHours" | "addMinutes" | "addDuration" => "talas_datetime_add_seconds",
+                                "diffSeconds" | "diffDays" => "talas_datetime_diff_seconds",
+                                "format" => "talas_datetime_format",
+                                _ => "talas_datetime_now",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = Vec::new();
+                            if !["now", "utc", "date", "time", "of", "parse", "fromUnix", "fromUnixMillis"].contains(&member.as_str()) {
+                                call_args.push(obj_op);
+                            }
+                            call_args.extend(arg_ops);
+                            let ret_ty = match member.as_str() {
+                                "zone" | "format" => Type::String,
+                                "year" | "month" | "day" | "hour" | "minute" | "second" | "timestamp" | "unix" | "unixMillis" | "unixNanos" | "diffSeconds" | "diffDays" => Type::Int,
+                                _ => Type::Class { name: "DateTime".into() },
+                            };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
+                        if class_name == "Duration" || member == "seconds" || member == "minutes" || member == "hours" || member == "days" {
+                            let symbol = match member.as_str() {
+                                "seconds" | "minutes" | "hours" | "days" => "talas_duration_create",
+                                "totalSeconds" => "talas_duration_total_seconds",
+                                _ => "talas_duration_create",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = Vec::new();
+                            if member == "totalSeconds" {
+                                call_args.push(obj_op);
+                            }
+                            call_args.extend(arg_ops);
+                            let ret_ty = if member == "totalSeconds" { Type::Int } else { Type::Class { name: "Duration".into() } };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
                         let mut target_method = member.clone();
 
                         if member == "getHeader" {

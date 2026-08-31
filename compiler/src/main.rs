@@ -4,8 +4,12 @@ use std::path::Path;
 use std::process::{self, Command};
 use talas_compiler::{DiagnosticEmitter, IrBuilder, Lexer, Parser, TextualLlvmEmitter, TypeChecker};
 
+fn print_version() {
+    println!("Talas Language Compiler & Toolchain v{}", env!("CARGO_PKG_VERSION"));
+}
+
 fn print_usage() {
-    eprintln!("Talas Language Compiler & Toolchain v0.1.0");
+    println!("Talas Language Compiler & Toolchain v{}", env!("CARGO_PKG_VERSION"));
     eprintln!("Usage: talas <command> [options]");
     eprintln!("Commands:");
     eprintln!("  new <project-name>                  Create a new Talas project folder structure");
@@ -56,12 +60,13 @@ fn handle_new_project(project_name: &str) {
     let toml_content = format!(
         r#"[package]
 name = "{}"
-version = "0.1.0"
+version = "{}"
 edition = "2026"
 
 [dependencies]
 "#,
-        project_name
+        project_name,
+        env!("CARGO_PKG_VERSION")
     );
     let _ = fs::write(proj_dir.join("talas.toml"), toml_content);
 
@@ -95,6 +100,11 @@ fn main() {
     }
 
     let command = &args[1];
+
+    if command == "--version" || command == "-V" || command == "-v" || command == "version" {
+        print_version();
+        return;
+    }
 
     if command == "new" {
         if args.len() < 3 {

@@ -1052,6 +1052,14 @@ impl<'a> Parser<'a> {
                         self.advance();
                         m
                     }
+                    TokenKind::In => {
+                        self.advance();
+                        "in".to_string()
+                    }
+                    TokenKind::Async => {
+                        self.advance();
+                        "async".to_string()
+                    }
                     _ => {
                         self.diagnostics.push(Diagnostic::error("Expected member name after '.'", Some(self.current_token.span)));
                         return Err(());

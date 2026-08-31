@@ -2,7 +2,7 @@
   "name": "talas-vscode",
   "displayName": "Talas Language Support",
   "description": "Syntax highlighting, file recognition, and language support for the Talas programming language (.talas)",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "publisher": "talas-lang",
   "icon": "icon.png",
   "categories": [

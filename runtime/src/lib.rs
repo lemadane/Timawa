@@ -1,5 +1,6 @@
 pub mod collections;
 pub mod concurrency;
+pub mod datetime;
 pub mod gc;
 pub mod io;
 pub mod memory;

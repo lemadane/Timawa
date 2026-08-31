@@ -2129,3 +2129,193 @@ fn test_e2e_task_async_static_factory() {
         checker.diagnostics
     );
 }
+
+#[test]
+fn test_e2e_datetime_factories_and_getters() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final dt = DateTime.of(2026, 8, 31, 14, 30)
+                print(dt.year())
+                print(dt.month())
+                print(dt.day())
+                print(dt.hour())
+                print(dt.minute())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing DateTime factories failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking DateTime factories failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_datetime_arithmetic_and_diff() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final start = DateTime.of(2026, 8, 31, 12, 0)
+                final later = start.addHours(2)
+                print(later.hour())
+                final diffSec = later.diffSeconds(start)
+                print(diffSec)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing DateTime arithmetic failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking DateTime arithmetic failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_datetime_formatting_and_parsing() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final dt = DateTime.parse(`2026-08-31T14:30:00+08:00`)
+                final formatted = dt.format(`yyyy-MM-dd HH:mm:ss`)
+                print(formatted)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing DateTime formatting and parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking DateTime formatting and parsing failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_duration_and_addition() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final start = DateTime.of(2026, 8, 31, 10, 0)
+                final dur = Duration.hours(3)
+                final end = start.addDuration(dur)
+                print(end.hour())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Duration addition failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Duration addition failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_datetime_instant_timezone_invariance() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final manila = DateTime.of(2026, 8, 31, 17, 0, `Asia/Manila`)
+                final tokyo = manila.in(`Asia/Tokyo`)
+                print(manila.timestamp() == tokyo.timestamp())
+                print(manila.hour())
+                print(tokyo.hour())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing timezone invariance failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking timezone invariance failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_datetime_unix_timestamp_factories() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final dt = DateTime.fromUnix(1788159600)
+                final sec = dt.unix()
+                final ms = dt.unixMillis()
+                print(sec)
+                print(ms)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Unix timestamp factories failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Unix timestamp factories failed: {:?}",
+        checker.diagnostics
+    );
+}
