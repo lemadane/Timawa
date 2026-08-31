@@ -1348,3 +1348,784 @@ fn test_e2e_invalid_unary_operands_emit_diagnostic() {
         "Expected '-true' to produce diagnostic error"
     );
 }
+
+#[test]
+fn test_e2e_guard_check_no_error_flow() {
+    let source_code = r#"
+        class Application {
+            main() {
+                guard {
+                    print(`Step 1`)
+                }
+                check(err) {
+                    if (err) {
+                        print(`Error occurred`)
+                    }
+                    print(`Cleanup`)
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building failed: {:?}",
+        builder.diagnostics
+    );
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(
+        llvm_ir.contains("define i32 @main"),
+        "LLVM emission failed for guard check no-error flow"
+    );
+}
+
+#[test]
+fn test_e2e_guard_raise_check_error_flow() {
+    let source_code = r#"
+        class CustomError(string _message) {
+            string message() {
+                return this._message
+            }
+        }
+
+        class Application {
+            main() {
+                guard {
+                    print(`Before raise`)
+                    raise(CustomError(`Something went wrong`))
+                    print(`Unreachable after raise`)
+                }
+                check(err) {
+                    if (err) {
+                        print(`Handled error`)
+                    }
+                    print(`Cleanup always runs`)
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building failed: {:?}",
+        builder.diagnostics
+    );
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(
+        llvm_ir.contains("define i32 @main"),
+        "LLVM emission failed for guard raise check error flow"
+    );
+}
+
+#[test]
+fn test_e2e_raise_outside_guard_emits_diagnostic() {
+    let source_code = r#"
+        class Application {
+            main() {
+                raise(`Error outside guard`)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    let mut checker = TypeChecker::new();
+    checker.check_program(&program);
+
+    assert!(
+        !checker.diagnostics.is_empty(),
+        "Expected 'raise' outside guard block to produce diagnostic error"
+    );
+}
+
+#[test]
+fn test_e2e_guard_raise_string_interpolation_flow() {
+    let source_code = r#"
+        class App {
+            main() {
+                guard {
+                    raise(`an error occurred`)
+                }
+                check(error) {
+                    if (error) {
+                        print(`${error}`)
+                    }
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building failed: {:?}",
+        builder.diagnostics
+    );
+
+    let mut emitter = TextualLlvmEmitter::new();
+    let llvm_ir = emitter.emit_program(&ir_program);
+
+    assert!(
+        llvm_ir.contains("define i32 @main"),
+        "LLVM emission failed for guard raise string interpolation flow"
+    );
+}
+
+#[test]
+fn test_e2e_raise_primitive_emits_diagnostic() {
+    let source_code = r#"
+        class Application {
+            main() {
+                guard {
+                    raise(123)
+                }
+                check(err) {
+                    print(`Cleanup`)
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    let mut checker = TypeChecker::new();
+    let is_valid = checker.check_program(&program);
+
+    assert!(
+        !is_valid,
+        "Type checker must reject raising primitive numbers"
+    );
+
+    assert!(
+        checker.diagnostics.iter().any(|d| d.message.contains("raise target must be a string or satisfy 'Error'")),
+        "Expected primitive raise diagnostic, got: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_raise_custom_class_error_trait() {
+    let source_code = r#"
+        class CustomError(int code, string rawMsg) {
+            string message() {
+                return `Error ${this._code}: ${this._rawMsg}`
+            }
+        }
+
+        class Application {
+            main() {
+                guard {
+                    raise(CustomError(404, `Not Found`))
+                }
+                check(err) {
+                    if (err) {
+                        print(err.message())
+                    }
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking custom error class failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let _ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building custom error class failed: {:?}",
+        builder.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_list_literal_indexing_and_methods() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final numbers = [10, 20, 30]
+                numbers.add(40)
+                print(numbers[0])
+                print(numbers.len())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing list literal failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking list literal failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_map_literal_indexing_and_len() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final scores = [1000L: 95, 1001L: 88]
+                print(scores[1000L])
+                print(scores.len())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing map literal failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking map literal failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_list_index_out_of_bounds_raises_error() {
+    let source_code = r#"
+        class Application {
+            main() {
+                guard {
+                    final list = [1, 2]
+                    print(list[10])
+                }
+                check(err) {
+                    if (err) {
+                        print(err.message())
+                    }
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing list out of bounds failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking list out of bounds failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_async_spawn_and_await() {
+    let source_code = r#"
+        class Application {
+            async fetchScore(int id) {
+                return 95
+            }
+
+            main() {
+                final task = this.fetchScore(1000)
+                final score = await task
+                print(score)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing async fetchScore failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking async fetchScore failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_async_task_raise_rethrown_on_await() {
+    let source_code = r#"
+        class Application {
+            async riskyTask() {
+                raise(`async task error`)
+            }
+
+            main() {
+                guard {
+                    final task = this.riskyTask()
+                    await task
+                }
+                check(err) {
+                    if (err) {
+                        print(err.message())
+                    }
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing async riskyTask failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking async riskyTask failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_channel_send_and_receive() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final ch = Channel()
+                ch.send(100)
+                final val = ch.receive()
+                print(val)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing channel send and receive failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking channel send and receive failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_async_expression_spawn() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final task = async (10 + 20)
+                final val = await task
+                print(val)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing inline async expression failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking inline async expression failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_multiple_async_tasks_concurrent_await() {
+    let source_code = r#"
+        class Application {
+            async compute(int val) {
+                return val * 2
+            }
+
+            main() {
+                final t1 = this.compute(10)
+                final t2 = this.compute(20)
+                final r1 = await t1
+                final r2 = await t2
+                print(r1 + r2)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing multiple concurrent async tasks failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking multiple concurrent async tasks failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_guard_check_inside_async_method_body() {
+    let source_code = r#"
+        class Application {
+            async safeTask() {
+                guard {
+                    raise(`inner async error`)
+                }
+                check(err) {
+                    if (err) {
+                        return 42
+                    }
+                }
+                return 0
+            }
+
+            main() {
+                final task = this.safeTask()
+                final res = await task
+                print(res)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing guard/check inside async method failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking guard/check inside async method failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_task_all_combinator_success() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final tasks = [async 10, async 20]
+                final results = await Task.all(tasks)
+                print(results.len())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Task.all failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Task.all failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_task_all_combinator_fail_fast() {
+    let source_code = r#"
+        class Application {
+            async failingTask() {
+                raise(`task 2 failed`)
+            }
+
+            main() {
+                guard {
+                    final tasks = [async 10, this.failingTask()]
+                    await Task.all(tasks)
+                }
+                check(err) {
+                    if (err) {
+                        print(err.message())
+                    }
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Task.all fail-fast failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Task.all fail-fast failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_task_any_and_race_combinators() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final t1 = async 100
+                final t2 = async 200
+                final winner = await Task.race([t1, t2])
+                print(winner)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Task.race failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Task.race failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_task_all_settled_combinator() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final tasks = [async 10, async 20]
+                final settled = await Task.allSettled(tasks)
+                print(settled.len())
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Task.allSettled failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Task.allSettled failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_await_and_cancel_timeout() {
+    let source_code = r#"
+        class Application {
+            main() {
+                guard {
+                    final task = async 500
+                    final res = awaitAndCancel(task, 2000)
+                    print(res)
+                }
+                check(err) {
+                    if (err) {
+                        print(err.message())
+                    }
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing awaitAndCancel failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking awaitAndCancel failed: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_task_async_static_factory() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final task = Task.async(10 + 20)
+                final val = await task
+                print(val)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing Task.async failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking Task.async failed: {:?}",
+        checker.diagnostics
+    );
+}

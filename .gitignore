@@ -1,0 +1,17 @@
+# Rust build directory
+/target
+target/
+
+# Generated LLVM IR & object files
+*.ll
+*.o
+*.a
+*.out
+/tmp/talas_*
+
+# Editor & OS files
+.vscode/*
+!.vscode/extensions
+.idea/
+*.swp
+.DS_Store

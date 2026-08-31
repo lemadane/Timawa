@@ -34,6 +34,12 @@ pub enum TokenKind {
     With,
     In,
     Print,
+    Guard,
+    Check,
+    Raise,
+    Async,
+    Await,
+    AwaitAndCancel,
 
     // Primitive Type Keywords
     StringType,

@@ -34,6 +34,7 @@ pub struct MethodDecl {
     pub params: Vec<Param>,
     pub return_type: Option<TypeSpec>, // None means implicit void
     pub body: Vec<Stmt>,
+    pub is_async: bool,
     pub span: Span,
 }
 
@@ -178,6 +179,18 @@ pub enum ExprKind {
         cases: Vec<SwitchCase>,
         default_case: Option<Box<Expr>>,
     },
+    ListLiteral(Vec<Expr>),
+    MapLiteral(Vec<(Expr, Expr)>),
+    IndexAccess {
+        target: Box<Expr>,
+        index: Box<Expr>,
+    },
+    AsyncSpawn(Box<Expr>),
+    Await(Box<Expr>),
+    AwaitAndCancel {
+        task: Box<Expr>,
+        timeout_ms: Box<Expr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -210,6 +223,12 @@ pub enum StmtKind {
     Continue,
     Return(Option<Expr>),
     Yield(Expr),
+    Guard {
+        body: Vec<Stmt>,
+        error_var: String,
+        check_body: Vec<Stmt>,
+    },
+    Raise(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq)]

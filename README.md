@@ -2,7 +2,7 @@
 
 > **Sharp, simple, native.**
 
-[![Language Specification](https://img.shields.io/badge/spec-v0.1.0-blue.svg)](LANGUAGE_SPEC_DRAFT.md)
+[![Language Specification](https://img.shields.io/badge/spec-v0.2.0-blue.svg)](LANGUAGE_SPEC_DRAFT.md)
 [![Compiler Status](https://img.shields.io/badge/compiler-Rust%20%2B%20LLVM-orange.svg)](ARCHITECTURE.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -74,12 +74,24 @@
 - **No Fall-Through**: Cases do not fall through (no `break` required inside cases).
 - **Pattern Support**: Matches constant values, Sum Class variant payloads, type checks (`is`), guard clauses (`if`), multiple OR values, and anonymous objects.
 
-### 14. Concurrency (`async` / `await`)
-- **Instance Method Spawning**: Spawning a task executes an instance method concurrently: `async worker.process(1)`.
-- **$M:N$ Scheduler**: Maps $M$ user-space lightweight tasks onto $N$ native OS threads using growable $2\text{ KB}$ stacks.
-- **Inter-Task Channels**: Communication via typed `Channel<T>` objects.
+### 14. Virtual Thread Task Concurrency (`async` / `await` & `Task` Primitives)
+- **Framework-Neutral Concurrency**: Patterned after Java's `vt-async-await` Virtual Threads model. Non-reactive, cheap sequential blocking `await`.
+- **Spawning Tasks**: `async expr`, `Task.async(expr)`, or `async worker.process(1)`.
+- **Promise Combinators**:
+  - `Task.all(tasks)`: Fail-fast combinator (cancels remaining tasks on failure, re-throwing error into `check(err)`).
+  - `Task.any(tasks)`: Returns the result of the first task that successfully completes.
+  - `Task.race(tasks)`: Returns outcome of the first completed task (cancels remaining tasks).
+  - `Task.allSettled(tasks)`: Awaits all tasks to complete without throwing.
+- **Timeouts & Cancellation**: `awaitAndCancel(task, timeoutMs)`, `task.cancel()`.
+- **Inter-Task Channels**: Communication via typed `Channel` queue (`.send()`, `.receive()`).
 
-### 15. Lambdas & Method References
+### 15. Exception Model (`guard` / `raise` / `check(err)`)
+- **Guard Blocks**: `guard { ... } check(err) { ... }` handles errors without traditional `try`/`catch`/`throw`.
+- **Built-in `Error` Trait**: Built-in contract requiring `string message()` and default `string stacktrace()`.
+- **Automatic String Auto-Boxing**: `raise("msg")` automatically auto-boxes plain text into `GenericError("msg")`.
+- **Runtime Bounds Protection**: Index access out of bounds automatically raises `OutOfBoundsError` (caught in `check(err)`).
+
+### 16. Lambdas & Method References
 - **Brace Syntax**: `{ (x) -> x * 2 }`.
 - **Compiler Lowering**: Lowered to synthetic, immutable single-method closure classes.
 - **Method References**: `this.methodName` syntax for instance method callbacks.
@@ -105,7 +117,7 @@ xcopy /E /I editors\vscode %USERPROFILE%\.vscode\extensions\talas-vscode
 ```bash
 cd editors/vscode
 npx vsce package
-code --install-extension talas-vscode-0.1.0.vsix
+code --install-extension talas-vscode-0.2.0.vsix
 ```
 
 ---
@@ -548,42 +560,102 @@ class Application {
 }
 ```
 
-### 11. Concurrency with `async`, `await`, and `Channel<T>`
+### 11. Virtual Thread Task Concurrency (`async`, `await`, `Task` Combinators & `Channel`)
 
-In Talas, lightweight tasks are spawned on instance methods using the `async` keyword and awaited with `await`. Tasks communicate using typed `Channel<T>` instances:
+In Talas, lightweight task-based concurrency is patterned after Java Virtual Threads (`vt-async-await`). Tasks can be spawned with `async`, `Task.async()`, or `async method()`, awaited sequentially, or coordinated via static promise combinators:
 
 ```java
-class UserRepository {
-    User findUser(long id) {
-        // Simulates database query
+class CustomerService {
+    async findRequired(long id) {
         return User(id, `Lem`, 35)
     }
 }
 
-class OrderProcessor {
-    processOrders(Channel<string> channel) {
-        channel.send(`Order #10042 Processed`)
+class OrderService {
+    async findForCustomer(long id) {
+        return [`Order #1001`, `Order #1002`]
     }
 }
 
 class Application {
     main() {
-        final repo = UserRepository()
-        final processor = OrderProcessor()
-        final channel = Channel<string>(10)
+        final customerService = CustomerService()
+        final orderService = OrderService()
 
-        // 1. Spawning asynchronous instance method task (returns Task<User>)
-        final Task<User> userTask = async repo.findUser(1000L)
+        // 1. Parallel submission on lightweight tasks (Java vt-async-await style)
+        final customerTask = Task.async(customerService.findRequired(1000L))
+        final ordersTask   = Task.async(orderService.findForCustomer(1000L))
 
-        // 2. Spawning concurrent task with channels
-        async processor.processOrders(channel)
+        // 2. Sequential blocking await (cheap execution)
+        final customer = await customerTask
+        final orders   = await ordersTask
+        print(`Loaded customer ${customer.name()} with ${orders.len()} orders`)
 
-        // 3. Non-blocking await
-        final user = await userTask
-        print(`Loaded user: ${user.name()}`)
+        // 3. Task.all Promise Combinator (Fail-fast & cancel remaining tasks)
+        guard {
+            final tasks = [
+                async 10,
+                async 20
+            ]
+            final results = await Task.all(tasks)
+            print(`All tasks finished with ${results.len()} results`)
+        }
+        check(err) {
+            if (err) {
+                print(`Task failed: ${err.message()}`)
+            }
+        }
 
-        final orderResult = await channel.receive()
-        print(`Channel message: ${orderResult}`)
+        // 4. Inter-Task Channel Communication
+        final channel = Channel()
+        channel.send(42)
+        final val = channel.receive()
+        print(`Channel received: ${val}`)
+    }
+}
+```
+
+### 12. Built-in Collections (`List<T>`, `Map<K, V>`, Indexing & Bounds Protection)
+
+```java
+class Application {
+    main() {
+        // 1. List literal, indexing, and methods
+        final numbers = [10, 20, 30]
+        numbers.add(40)
+        print(`List len: ${numbers.len()}, first element: ${numbers[0]}`)
+
+        // 2. Map literal, key lookup, and methods
+        final scores = [1000L: 95, 1001L: 88]
+        print(`Map len: ${scores.len()}, score for 1000L: ${scores[1000L]}`)
+
+        // 3. Out-of-bounds error handling
+        guard {
+            print(numbers[10]) // Out of bounds!
+        }
+        check(err) {
+            if (err) {
+                print(`Caught error: ${err.message()}`)
+            }
+        }
+    }
+}
+```
+
+### 13. Structured Exception Model (`guard`, `raise`, `check(err)`)
+
+```java
+class Application {
+    main() {
+        guard {
+            // Auto-boxed string raise into GenericError
+            raise(`Invalid user request`)
+        }
+        check(err) {
+            if (err) {
+                print(`Caught error message: ${err.message()}`)
+            }
+        }
     }
 }
 ```

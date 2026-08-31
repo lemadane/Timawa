@@ -37,7 +37,7 @@ impl Precedence {
             TokenKind::DotDot => Precedence::Range,
             TokenKind::Plus | TokenKind::Minus => Precedence::Term,
             TokenKind::Star | TokenKind::Slash | TokenKind::Percent => Precedence::Factor,
-            TokenKind::OpenParen | TokenKind::Dot | TokenKind::QuestionDot => Precedence::Call,
+            TokenKind::OpenParen | TokenKind::OpenBracket | TokenKind::Dot | TokenKind::QuestionDot => Precedence::Call,
             _ => Precedence::None,
         }
     }
@@ -303,6 +303,7 @@ impl<'a> Parser<'a> {
 
     fn parse_method_decl(&mut self) -> Result<MethodDecl, ()> {
         let start_span = self.current_token.span;
+        let is_async = self.match_token(&TokenKind::Async);
 
         // Check if return type is omitted: identifier followed directly by '('
         let (return_type, method_name) = match (&self.current_token.kind, &self.peek_token.kind) {
@@ -359,12 +360,11 @@ impl<'a> Parser<'a> {
         let end_span = if self.match_token(&TokenKind::Semicolon) {
             self.current_token.span
         } else {
-            self.expect(&TokenKind::OpenBrace, "'{' or ';'")?;
+            self.expect(&TokenKind::OpenBrace, "{")?;
             while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
                 body.push(self.parse_stmt()?);
             }
-            let end_tok = self.expect(&TokenKind::CloseBrace, "}")?;
-            end_tok.span
+            self.expect(&TokenKind::CloseBrace, "}")?.span
         };
 
         Ok(MethodDecl {
@@ -372,6 +372,7 @@ impl<'a> Parser<'a> {
             params,
             return_type,
             body,
+            is_async,
             span: Span::combine(start_span, end_span),
         })
     }
@@ -487,8 +488,70 @@ impl<'a> Parser<'a> {
             TokenKind::Continue => self.parse_continue_stmt(),
             TokenKind::Return => self.parse_return_stmt(),
             TokenKind::Yield => self.parse_yield_stmt(),
+            TokenKind::Guard => self.parse_guard_stmt(),
+            TokenKind::Raise => self.parse_raise_stmt(),
             _ => self.parse_expr_or_typed_decl_stmt(),
         }
+    }
+
+    fn parse_guard_stmt(&mut self) -> Result<Stmt, ()> {
+        let start_span = self.current_token.span;
+        self.expect(&TokenKind::Guard, "guard")?;
+        self.expect(&TokenKind::OpenBrace, "{")?;
+        let mut body = Vec::new();
+        while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
+            body.push(self.parse_stmt()?);
+        }
+        self.expect(&TokenKind::CloseBrace, "}")?;
+
+        self.expect(&TokenKind::Check, "check")?;
+        self.expect(&TokenKind::OpenParen, "(")?;
+        let error_var = match self.current_token.kind.clone() {
+            TokenKind::Identifier(name) => {
+                self.advance();
+                name
+            }
+            _ => {
+                self.diagnostics.push(Diagnostic::error("Expected error variable name in check(err)", Some(self.current_token.span)));
+                return Err(());
+            }
+        };
+        self.expect(&TokenKind::CloseParen, ")")?;
+
+        self.expect(&TokenKind::OpenBrace, "{")?;
+        let mut check_body = Vec::new();
+        while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
+            check_body.push(self.parse_stmt()?);
+        }
+        let end_span = self.expect(&TokenKind::CloseBrace, "}")?.span;
+
+        Ok(Stmt {
+            kind: StmtKind::Guard {
+                body,
+                error_var,
+                check_body,
+            },
+            span: Span::combine(start_span, end_span),
+        })
+    }
+
+    fn parse_raise_stmt(&mut self) -> Result<Stmt, ()> {
+        let start_span = self.current_token.span;
+        self.expect(&TokenKind::Raise, "raise")?;
+        let expr = if self.match_token(&TokenKind::OpenParen) {
+            let inner = self.parse_expr(Precedence::None)?;
+            self.expect(&TokenKind::CloseParen, ")")?;
+            inner
+        } else {
+            self.parse_expr(Precedence::None)?
+        };
+        let end_span = self.current_token.span;
+        self.match_token(&TokenKind::Semicolon);
+
+        Ok(Stmt {
+            kind: StmtKind::Raise(expr),
+            span: Span::combine(start_span, end_span),
+        })
     }
 
     fn parse_break_stmt(&mut self) -> Result<Stmt, ()> {
@@ -870,6 +933,78 @@ impl<'a> Parser<'a> {
                     span: Span::combine(tok.span, end_tok.span),
                 })
             }
+            TokenKind::OpenBracket => {
+                if self.check(&TokenKind::CloseBracket) {
+                    let end_tok = self.expect(&TokenKind::CloseBracket, "]")?;
+                    return Ok(Expr {
+                        kind: ExprKind::ListLiteral(vec![]),
+                        span: Span::combine(tok.span, end_tok.span),
+                    });
+                }
+                let first_expr = self.parse_expr(Precedence::None)?;
+                if self.check(&TokenKind::Colon) {
+                    self.advance();
+                    let first_val = self.parse_expr(Precedence::None)?;
+                    let mut pairs = vec![(first_expr, first_val)];
+                    while self.match_token(&TokenKind::Comma) {
+                        if self.check(&TokenKind::CloseBracket) {
+                            break;
+                        }
+                        let k = self.parse_expr(Precedence::None)?;
+                        self.expect(&TokenKind::Colon, ":")?;
+                        let v = self.parse_expr(Precedence::None)?;
+                        pairs.push((k, v));
+                    }
+                    let end_tok = self.expect(&TokenKind::CloseBracket, "]")?;
+                    Ok(Expr {
+                        kind: ExprKind::MapLiteral(pairs),
+                        span: Span::combine(tok.span, end_tok.span),
+                    })
+                } else {
+                    let mut items = vec![first_expr];
+                    while self.match_token(&TokenKind::Comma) {
+                        if self.check(&TokenKind::CloseBracket) {
+                            break;
+                        }
+                        items.push(self.parse_expr(Precedence::None)?);
+                    }
+                    let end_tok = self.expect(&TokenKind::CloseBracket, "]")?;
+                    Ok(Expr {
+                        kind: ExprKind::ListLiteral(items),
+                        span: Span::combine(tok.span, end_tok.span),
+                    })
+                }
+            }
+            TokenKind::Async => {
+                let inner = self.parse_expr(Precedence::Unary)?;
+                let span = Span::combine(tok.span, inner.span);
+                Ok(Expr {
+                    kind: ExprKind::AsyncSpawn(Box::new(inner)),
+                    span,
+                })
+            }
+            TokenKind::Await => {
+                let inner = self.parse_expr(Precedence::Unary)?;
+                let span = Span::combine(tok.span, inner.span);
+                Ok(Expr {
+                    kind: ExprKind::Await(Box::new(inner)),
+                    span,
+                })
+            }
+            TokenKind::AwaitAndCancel => {
+                self.expect(&TokenKind::OpenParen, "(")?;
+                let task = self.parse_expr(Precedence::None)?;
+                self.expect(&TokenKind::Comma, ",")?;
+                let timeout_ms = self.parse_expr(Precedence::None)?;
+                let end_tok = self.expect(&TokenKind::CloseParen, ")")?;
+                Ok(Expr {
+                    kind: ExprKind::AwaitAndCancel {
+                        task: Box::new(task),
+                        timeout_ms: Box::new(timeout_ms),
+                    },
+                    span: Span::combine(tok.span, end_tok.span),
+                })
+            }
             _ => {
                 self.diagnostics.push(Diagnostic::error(
                     format!("Unexpected expression token {:?}", tok.kind),
@@ -996,6 +1131,18 @@ impl<'a> Parser<'a> {
                         is_negated,
                     },
                     span: Span::combine(left.span, self.current_token.span),
+                })
+            }
+            TokenKind::OpenBracket => {
+                self.advance();
+                let index_expr = self.parse_expr(Precedence::None)?;
+                let end_tok = self.expect(&TokenKind::CloseBracket, "]")?;
+                Ok(Expr {
+                    kind: ExprKind::IndexAccess {
+                        target: Box::new(left.clone()),
+                        index: Box::new(index_expr),
+                    },
+                    span: Span::combine(left.span, end_tok.span),
                 })
             }
             _ => {

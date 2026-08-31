@@ -15,6 +15,7 @@ pub struct IrBuilder {
     class_field_indices: HashMap<(String, String), (usize, Type)>,
     class_decls: HashMap<String, ClassDecl>,
     loop_stack: Vec<(BlockId, BlockId)>,
+    guard_stack: Vec<(Register, BlockId)>,
     current_block_id: Option<BlockId>,
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -32,6 +33,7 @@ impl IrBuilder {
             class_field_indices: HashMap::new(),
             class_decls: HashMap::new(),
             loop_stack: Vec::new(),
+            guard_stack: Vec::new(),
             current_block_id: None,
             diagnostics: Vec::new(),
         }
@@ -411,6 +413,16 @@ impl IrBuilder {
     }
 
     pub fn build_class_instantiation(&mut self, class_name: &str, args: &[Expr]) -> IrOperand {
+        if class_name == "Channel" {
+            let dest = self.fresh_reg();
+            self.emit(IrInstruction::CallRuntime {
+                dest: Some(dest),
+                symbol: "talas_channel_create".into(),
+                args: vec![],
+                ret_ty: Type::Class { name: "Channel".into() },
+            });
+            return IrOperand::Register(dest, Type::Class { name: "Channel".into() });
+        }
         let mut arg_ops: Vec<IrOperand> = args.iter().map(|a| self.build_expr(a)).collect();
         if let Some(cls_decl) = self.class_decls.get(class_name).cloned() {
             if arg_ops.len() < cls_decl.primary_params.len() {
@@ -472,7 +484,25 @@ impl IrBuilder {
                 self.build_expr(expr);
             }
             StmtKind::If { condition, then_branch, else_branch } => {
-                let cond_op = self.build_expr(condition);
+                let mut cond_op = self.build_expr(condition);
+                let cond_ty = cond_op.get_type();
+                if cond_ty != Type::Bool {
+                    let dest = self.fresh_reg();
+                    let (op_code, rhs) = match cond_ty {
+                        Type::Decimal => (BinaryOp::NotEqual, IrOperand::ConstantDecimal(0.0)),
+                        Type::Int | Type::Long => (BinaryOp::NotEqual, IrOperand::ConstantInt(0)),
+                        _ => (BinaryOp::NotEqual, IrOperand::Null),
+                    };
+                    self.emit(IrInstruction::Binary {
+                        dest,
+                        op: op_code,
+                        left: cond_op.clone(),
+                        right: rhs,
+                        operand_ty: cond_ty,
+                        result_ty: Type::Bool,
+                    });
+                    cond_op = IrOperand::Register(dest, Type::Bool);
+                }
                 let then_block = self.fresh_block();
                 let else_block = self.fresh_block();
                 let merge_block = self.fresh_block();
@@ -534,7 +564,26 @@ impl IrBuilder {
 
                 self.current_block_id = Some(header_block);
                 let cond_op = if let Some(cond) = condition_or_iterable {
-                    self.build_expr(cond)
+                    let mut op = self.build_expr(cond);
+                    let cond_ty = op.get_type();
+                    if cond_ty != Type::Bool {
+                        let dest = self.fresh_reg();
+                        let (op_code, rhs) = match cond_ty {
+                            Type::Decimal => (BinaryOp::NotEqual, IrOperand::ConstantDecimal(0.0)),
+                            Type::Int | Type::Long => (BinaryOp::NotEqual, IrOperand::ConstantInt(0)),
+                            _ => (BinaryOp::NotEqual, IrOperand::Null),
+                        };
+                        self.emit(IrInstruction::Binary {
+                            dest,
+                            op: op_code,
+                            left: op.clone(),
+                            right: rhs,
+                            operand_ty: cond_ty,
+                            result_ty: Type::Bool,
+                        });
+                        op = IrOperand::Register(dest, Type::Bool);
+                    }
+                    op
                 } else {
                     IrOperand::ConstantBool(true)
                 };
@@ -583,6 +632,57 @@ impl IrBuilder {
             StmtKind::Yield(expr) => {
                 let val = self.build_expr(expr);
                 self.emit(IrInstruction::Return { val: Some(val) });
+            }
+            StmtKind::Guard { body, error_var, check_body } => {
+                let err_ty = Type::Nullable(Box::new(Type::Class { name: "Error".into() }));
+                let err_ptr = self.fresh_reg();
+                self.emit(IrInstruction::Alloca { dest: err_ptr, ty: err_ty.clone() });
+                self.emit(IrInstruction::Store { val: IrOperand::Null, ptr: err_ptr });
+
+                let check_block = self.fresh_block();
+                self.guard_stack.push((err_ptr, check_block));
+
+                self.push_var_scope();
+                for s in body {
+                    self.build_stmt(s);
+                    if self.is_current_terminated() {
+                        break;
+                    }
+                }
+                if !self.is_current_terminated() {
+                    self.emit(IrInstruction::Jump { target: check_block });
+                }
+                if let Some(cb) = self.current_block_id {
+                    self.finish_block(cb);
+                }
+                self.pop_var_scope();
+                self.guard_stack.pop();
+
+                self.current_block_id = Some(check_block);
+                self.push_var_scope();
+                self.insert_var(error_var.clone(), err_ptr, err_ty);
+                for s in check_body {
+                    self.build_stmt(s);
+                    if self.is_current_terminated() {
+                        break;
+                    }
+                }
+                self.pop_var_scope();
+            }
+            StmtKind::Raise(expr) => {
+                let mut val_op = self.build_expr(expr);
+                if val_op.get_type() == Type::String {
+                    val_op = self.build_class_instantiation("GenericError", &[expr.clone()]);
+                }
+                if let Some((err_ptr, check_target)) = self.guard_stack.last().cloned() {
+                    self.emit(IrInstruction::Store { val: val_op, ptr: err_ptr });
+                    self.emit(IrInstruction::Jump { target: check_target });
+                } else {
+                    self.diagnostics.push(Diagnostic::error(
+                        "'raise' can only be used inside a guard block",
+                        Some(expr.span),
+                    ));
+                }
             }
         }
     }
@@ -634,7 +734,24 @@ impl IrBuilder {
                     if !curr.is_empty() {
                         parts.push(IrOperand::ConstantString(curr.to_string()));
                     }
-                    parts.first().cloned().unwrap_or_else(|| IrOperand::ConstantString("".into()))
+                    if parts.is_empty() {
+                        IrOperand::ConstantString("".into())
+                    } else if parts.len() == 1 {
+                        parts[0].clone()
+                    } else {
+                        let mut acc = parts[0].clone();
+                        for next in &parts[1..] {
+                            let dest = self.fresh_reg();
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: "talas_string_concat".into(),
+                                args: vec![acc, next.clone()],
+                                ret_ty: Type::String,
+                            });
+                            acc = IrOperand::Register(dest, Type::String);
+                        }
+                        acc
+                    }
                 } else {
                     IrOperand::ConstantString(v.clone())
                 }
@@ -666,6 +783,92 @@ impl IrBuilder {
                             Type::Class { name } => name,
                             _ => "Application".into(),
                         };
+
+                        if class_name == "List" {
+                            let symbol = match member.as_str() {
+                                "add" => "talas_list_add",
+                                "len" => "talas_list_len",
+                                _ => "talas_list_len",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = vec![obj_op];
+                            call_args.extend(arg_ops);
+                            let ret_ty = if member == "len" { Type::Int } else { Type::Void };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: if ret_ty == Type::Void { None } else { Some(dest) },
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return if ret_ty == Type::Void { IrOperand::Null } else { IrOperand::Register(dest, ret_ty) };
+                        }
+                        if class_name == "Map" {
+                            let symbol = match member.as_str() {
+                                "len" => "talas_map_len",
+                                _ => "talas_map_len",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = vec![obj_op];
+                            call_args.extend(arg_ops);
+                            let ret_ty = if member == "len" { Type::Int } else { Type::Void };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: if ret_ty == Type::Void { None } else { Some(dest) },
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return if ret_ty == Type::Void { IrOperand::Null } else { IrOperand::Register(dest, ret_ty) };
+                        }
+                        if class_name == "Channel" {
+                            let symbol = match member.as_str() {
+                                "send" => "talas_channel_send",
+                                "receive" => "talas_channel_recv",
+                                _ => "talas_channel_recv",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = vec![obj_op];
+                            call_args.extend(arg_ops);
+                            let ret_ty = if member == "receive" { Type::Int } else { Type::Void };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: if ret_ty == Type::Void { None } else { Some(dest) },
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return if ret_ty == Type::Void { IrOperand::Null } else { IrOperand::Register(dest, ret_ty) };
+                        }
+                        if class_name == "Task" || member == "async" {
+                            let symbol = match member.as_str() {
+                                "async" => "talas_task_create",
+                                "all" => "talas_task_all",
+                                "any" => "talas_task_any",
+                                "race" => "talas_task_race",
+                                "allSettled" => "talas_task_all_settled",
+                                "cancel" => "talas_task_cancel",
+                                _ => "talas_task_await",
+                            };
+                            let dest = self.fresh_reg();
+                            let mut call_args = Vec::new();
+                            if member == "cancel" {
+                                call_args.push(obj_op);
+                            } else {
+                                call_args.extend(arg_ops);
+                            }
+                            let ret_ty = match member.as_str() {
+                                "async" => Type::Class { name: "Task".into() },
+                                "all" | "allSettled" => Type::Class { name: "List".into() },
+                                "cancel" => Type::Bool,
+                                _ => Type::Int,
+                            };
+                            self.emit(IrInstruction::CallRuntime {
+                                dest: Some(dest),
+                                symbol: symbol.into(),
+                                args: call_args,
+                                ret_ty: ret_ty.clone(),
+                            });
+                            return IrOperand::Register(dest, ret_ty);
+                        }
+
                         let mut target_method = member.clone();
 
                         if member == "getHeader" {
@@ -856,6 +1059,149 @@ impl IrBuilder {
                         IrOperand::Register(dest, ty)
                     }
                 }
+            }
+            ExprKind::ListLiteral(elements) => {
+                let list_reg = self.fresh_reg();
+                self.emit(IrInstruction::CallRuntime {
+                    dest: Some(list_reg),
+                    symbol: "talas_list_create".into(),
+                    args: vec![],
+                    ret_ty: Type::Class { name: "List".into() },
+                });
+                let list_op = IrOperand::Register(list_reg, Type::Class { name: "List".into() });
+                for elem in elements {
+                    let elem_op = self.build_expr(elem);
+                    self.emit(IrInstruction::CallRuntime {
+                        dest: None,
+                        symbol: "talas_list_add".into(),
+                        args: vec![list_op.clone(), elem_op],
+                        ret_ty: Type::Void,
+                    });
+                }
+                list_op
+            }
+            ExprKind::MapLiteral(pairs) => {
+                let map_reg = self.fresh_reg();
+                self.emit(IrInstruction::CallRuntime {
+                    dest: Some(map_reg),
+                    symbol: "talas_map_create".into(),
+                    args: vec![],
+                    ret_ty: Type::Class { name: "Map".into() },
+                });
+                let map_op = IrOperand::Register(map_reg, Type::Class { name: "Map".into() });
+                for (k, v) in pairs {
+                    let k_op = self.build_expr(k);
+                    let v_op = self.build_expr(v);
+                    self.emit(IrInstruction::CallRuntime {
+                        dest: None,
+                        symbol: "talas_map_put".into(),
+                        args: vec![map_op.clone(), k_op, v_op],
+                        ret_ty: Type::Void,
+                    });
+                }
+                map_op
+            }
+            ExprKind::IndexAccess { target, index } => {
+                let target_op = self.build_expr(target);
+                let index_op = self.build_expr(index);
+                let dest = self.fresh_reg();
+                if let Type::Class { ref name } = target_op.get_type() {
+                    if name == "Map" {
+                        self.emit(IrInstruction::CallRuntime {
+                            dest: Some(dest),
+                            symbol: "talas_map_get".into(),
+                            args: vec![target_op, index_op],
+                            ret_ty: Type::Int,
+                        });
+                        return IrOperand::Register(dest, Type::Int);
+                    }
+                }
+                let len_reg = self.fresh_reg();
+                self.emit(IrInstruction::CallRuntime {
+                    dest: Some(len_reg),
+                    symbol: "talas_list_len".into(),
+                    args: vec![target_op.clone()],
+                    ret_ty: Type::Int,
+                });
+                let len_op = IrOperand::Register(len_reg, Type::Int);
+
+                let is_out_of_bounds = self.fresh_reg();
+                self.emit(IrInstruction::Binary {
+                    dest: is_out_of_bounds,
+                    op: BinaryOp::GreaterEqual,
+                    left: index_op.clone(),
+                    right: len_op,
+                    operand_ty: Type::Int,
+                    result_ty: Type::Bool,
+                });
+
+                let check_target_opt = self.guard_stack.last().cloned();
+                if let Some((err_ptr, check_target)) = check_target_opt {
+                    let oob_block = self.fresh_block();
+                    let ok_block = self.fresh_block();
+
+                    self.emit(IrInstruction::Branch {
+                        cond: IrOperand::Register(is_out_of_bounds, Type::Bool),
+                        then_block: oob_block,
+                        else_block: ok_block,
+                    });
+                    if let Some(cb) = self.current_block_id {
+                        self.finish_block(cb);
+                    }
+
+                    self.current_block_id = Some(oob_block);
+                    let err_inst = self.build_class_instantiation("OutOfBoundsError", &[Expr {
+                        kind: ExprKind::StringLiteral("OutOfBoundsError: List index out of bounds".into()),
+                        span: expr.span,
+                    }]);
+                    self.emit(IrInstruction::Store { val: err_inst, ptr: err_ptr });
+                    self.emit(IrInstruction::Jump { target: check_target });
+                    self.finish_block(oob_block);
+
+                    self.current_block_id = Some(ok_block);
+                }
+
+                self.emit(IrInstruction::CallRuntime {
+                    dest: Some(dest),
+                    symbol: "talas_list_get".into(),
+                    args: vec![target_op, index_op],
+                    ret_ty: Type::Int,
+                });
+                IrOperand::Register(dest, Type::Int)
+            }
+            ExprKind::AsyncSpawn(inner) => {
+                let val_op = self.build_expr(inner);
+                let dest = self.fresh_reg();
+                self.emit(IrInstruction::CallRuntime {
+                    dest: Some(dest),
+                    symbol: "talas_task_create".into(),
+                    args: vec![val_op],
+                    ret_ty: Type::Class { name: "Task".into() },
+                });
+                IrOperand::Register(dest, Type::Class { name: "Task".into() })
+            }
+            ExprKind::Await(inner) => {
+                let task_op = self.build_expr(inner);
+                let dest = self.fresh_reg();
+                self.emit(IrInstruction::CallRuntime {
+                    dest: Some(dest),
+                    symbol: "talas_task_await".into(),
+                    args: vec![task_op],
+                    ret_ty: Type::Int,
+                });
+                IrOperand::Register(dest, Type::Int)
+            }
+            ExprKind::AwaitAndCancel { task, timeout_ms } => {
+                let task_op = self.build_expr(task);
+                let timeout_op = self.build_expr(timeout_ms);
+                let dest = self.fresh_reg();
+                self.emit(IrInstruction::CallRuntime {
+                    dest: Some(dest),
+                    symbol: "talas_task_await_timeout_cancel".into(),
+                    args: vec![task_op, timeout_op],
+                    ret_ty: Type::Int,
+                });
+                IrOperand::Register(dest, Type::Int)
             }
             unsupported => {
                 self.diagnostics.push(Diagnostic::error(

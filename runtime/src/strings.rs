@@ -41,3 +41,22 @@ pub extern "C" fn talas_string_create(c_str_ptr: *const c_char) -> TalasString {
         }
     }
 }
+
+#[no_mangle]
+pub extern "C" fn talas_string_concat(a: *const c_char, b: *const c_char) -> *const c_char {
+    let s_a = if a.is_null() { "" } else { unsafe { CStr::from_ptr(a).to_str().unwrap_or("") } };
+    let s_b = if b.is_null() { "" } else { unsafe { CStr::from_ptr(b).to_str().unwrap_or("") } };
+    let res = format!("{}{}\0", s_a, s_b);
+    let bytes = res.as_bytes();
+    let layout = match std::alloc::Layout::from_size_align(bytes.len(), 1) {
+        Ok(l) => l,
+        Err(_) => return std::ptr::null(),
+    };
+    let ptr = unsafe { std::alloc::alloc(layout) };
+    if !ptr.is_null() {
+        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len()); }
+        ptr as *const c_char
+    } else {
+        std::ptr::null()
+    }
+}

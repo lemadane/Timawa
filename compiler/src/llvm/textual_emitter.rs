@@ -37,7 +37,28 @@ impl TextualLlvmEmitter {
         self.output.push_str("declare void @talas_print_str(i8*)\n");
         self.output.push_str("declare void @talas_print_i64(i64)\n");
         self.output.push_str("declare void @talas_print_f64(double)\n");
-        self.output.push_str("declare void @talas_print_bool(i1)\n\n");
+        self.output.push_str("declare void @talas_print_bool(i1)\n");
+        self.output.push_str("declare i8* @talas_string_concat(i8*, i8*)\n");
+        self.output.push_str("declare i8* @talas_list_create()\n");
+        self.output.push_str("declare void @talas_list_add(i8*, i64)\n");
+        self.output.push_str("declare i64 @talas_list_get(i8*, i64)\n");
+        self.output.push_str("declare i64 @talas_list_len(i8*)\n");
+        self.output.push_str("declare i8* @talas_map_create()\n");
+        self.output.push_str("declare void @talas_map_put(i8*, i64, i64)\n");
+        self.output.push_str("declare i64 @talas_map_get(i8*, i64)\n");
+        self.output.push_str("declare i64 @talas_map_len(i8*)\n");
+        self.output.push_str("declare i8* @talas_task_create(i64)\n");
+        self.output.push_str("declare i64 @talas_task_await(i8*)\n");
+        self.output.push_str("declare void @talas_task_yield()\n");
+        self.output.push_str("declare i8* @talas_task_all(i8*)\n");
+        self.output.push_str("declare i64 @talas_task_any(i8*)\n");
+        self.output.push_str("declare i64 @talas_task_race(i8*)\n");
+        self.output.push_str("declare i8* @talas_task_all_settled(i8*)\n");
+        self.output.push_str("declare i1 @talas_task_cancel(i8*)\n");
+        self.output.push_str("declare i64 @talas_task_await_timeout_cancel(i8*, i64)\n");
+        self.output.push_str("declare i8* @talas_channel_create()\n");
+        self.output.push_str("declare void @talas_channel_send(i8*, i64)\n");
+        self.output.push_str("declare i64 @talas_channel_recv(i8*)\n\n");
 
         let mut declared_types: HashSet<String> = ir_program.classes.iter().map(|c| c.name.clone()).collect();
 
@@ -50,6 +71,23 @@ impl TextualLlvmEmitter {
                 .collect::<Vec<_>>()
                 .join(", ");
             self.output.push_str(&format!("%{} = type {{ {} }}\n", cls.name, field_types));
+        }
+
+        let builtins = vec![
+            ("GenericError", "i8*"),
+            ("OutOfBoundsError", "i8*"),
+            ("Error", "i8*"),
+            ("Task", "i8*"),
+            ("Channel", "i8*"),
+            ("List", "i8*"),
+            ("Map", "i8*"),
+        ];
+
+        for (name, fields) in builtins {
+            if !declared_types.contains(name) {
+                self.output.push_str(&format!("%{} = type {{ {} }}\n", name, fields));
+                declared_types.insert(name.to_string());
+            }
         }
 
         // Object layouts for abstract trait types referenced in parameters/receivers
@@ -181,7 +219,10 @@ impl TextualLlvmEmitter {
     fn emit_instruction(&mut self, instr: &IrInstruction) -> String {
         match instr {
             IrInstruction::Alloca { dest, ty } => {
-                let ty_str = self.type_to_llvm(ty);
+                let mut ty_str = self.type_to_llvm(ty);
+                if ty_str == "void" {
+                    ty_str = "i8*".to_string();
+                }
                 format!("%{} = alloca {}, align 8", dest.0, ty_str)
             }
             IrInstruction::Load { dest, ptr, ty } => {
@@ -424,7 +465,14 @@ impl TextualLlvmEmitter {
             Type::String => "i8*".to_string(),
             Type::Void => "void".to_string(),
             Type::Class { name } => format!("%{}*", name),
-            Type::Nullable(inner) => self.type_to_llvm(inner),
+            Type::Nullable(inner) => {
+                let inner_str = self.type_to_llvm(inner);
+                if inner_str == "void" {
+                    "i8*".to_string()
+                } else {
+                    inner_str
+                }
+            }
             Type::AnonymousObject { .. } => "i8*".to_string(),
             Type::Function { .. } => "i8*".to_string(),
         }

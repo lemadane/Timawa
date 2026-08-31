@@ -27,6 +27,8 @@ pub struct TypeChecker {
     current_class: Option<String>,
     current_return_type: Option<Type>,
     loop_depth: usize,
+    guard_depth: usize,
+    current_method_is_async: bool,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -39,6 +41,8 @@ impl TypeChecker {
             current_class: None,
             current_return_type: None,
             loop_depth: 0,
+            guard_depth: 0,
+            current_method_is_async: false,
             diagnostics: Vec::new(),
         };
         checker.register_builtins();
@@ -55,6 +59,70 @@ impl TypeChecker {
                 name: "Console".into(),
                 fields: HashMap::new(),
                 methods: console_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut error_trait_methods = HashMap::new();
+        error_trait_methods.insert("message".into(), (Vec::new(), Type::String));
+        error_trait_methods.insert("stacktrace".into(), (Vec::new(), Type::String));
+        self.traits.insert(
+            "Error".into(),
+            TraitInfo {
+                name: "Error".into(),
+                methods: error_trait_methods,
+            },
+        );
+
+        let mut generic_error_methods = HashMap::new();
+        generic_error_methods.insert("message".into(), (Vec::new(), Type::String));
+        generic_error_methods.insert("stacktrace".into(), (Vec::new(), Type::String));
+        let mut generic_error_fields = HashMap::new();
+        generic_error_fields.insert("_message".into(), (Type::String, false));
+
+        self.classes.insert(
+            "GenericError".into(),
+            ClassInfo {
+                name: "GenericError".into(),
+                fields: generic_error_fields,
+                methods: generic_error_methods,
+                param_types: vec![Type::String],
+                min_constructor_args: 1,
+                max_constructor_args: 1,
+            },
+        );
+
+        let mut channel_methods = HashMap::new();
+        channel_methods.insert("send".into(), (vec![Type::Int], Type::Void));
+        channel_methods.insert("receive".into(), (Vec::new(), Type::Int));
+        self.classes.insert(
+            "Channel".into(),
+            ClassInfo {
+                name: "Channel".into(),
+                fields: HashMap::new(),
+                methods: channel_methods,
+                param_types: Vec::new(),
+                min_constructor_args: 0,
+                max_constructor_args: 0,
+            },
+        );
+
+        let mut task_methods = HashMap::new();
+        task_methods.insert("all".into(), (vec![Type::Class { name: "List".into() }], Type::Class { name: "List".into() }));
+        task_methods.insert("any".into(), (vec![Type::Class { name: "List".into() }], Type::Int));
+        task_methods.insert("race".into(), (vec![Type::Class { name: "List".into() }], Type::Int));
+        task_methods.insert("allSettled".into(), (vec![Type::Class { name: "List".into() }], Type::Class { name: "List".into() }));
+        task_methods.insert("cancel".into(), (Vec::new(), Type::Bool));
+        task_methods.insert("async".into(), (vec![Type::Int], Type::Class { name: "Task".into() }));
+
+        self.classes.insert(
+            "Task".into(),
+            ClassInfo {
+                name: "Task".into(),
+                fields: HashMap::new(),
+                methods: task_methods,
                 param_types: Vec::new(),
                 min_constructor_args: 0,
                 max_constructor_args: 0,
@@ -153,10 +221,14 @@ impl TypeChecker {
     }
 
     fn check_method(&mut self, cls: &ClassDecl, method: &MethodDecl) {
-        let return_type = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
+        self.current_method_is_async = method.is_async;
+        let mut return_type = method.return_type.as_ref().map_or(Type::Void, |t| self.type_spec_to_type(t));
+        if method.is_async && return_type == Type::Void {
+            return_type = Type::Int;
+        }
         self.current_return_type = Some(return_type.clone());
 
-        if return_type != Type::Void {
+        if return_type != Type::Void && !method.is_async {
             let has_return = method.body.iter().any(|stmt| self.stmt_definitely_returns(stmt));
             if !has_return {
                 self.diagnostics.push(Diagnostic::error(
@@ -219,9 +291,9 @@ impl TypeChecker {
             StmtKind::If { condition, then_branch, else_branch } => {
                 let cond_ty = self.check_expr(cls, condition);
                 if let Some(cty) = cond_ty {
-                    if cty != Type::Bool {
+                    if !self.is_valid_condition_type(&cty) {
                         self.diagnostics.push(Diagnostic::error(
-                            format!("Condition must be Bool, found '{:?}'", cty),
+                            format!("Condition must be Bool or truthy expression, found '{:?}'", cty),
                             Some(condition.span),
                         ));
                     }
@@ -259,9 +331,9 @@ impl TypeChecker {
                 if let Some(cond) = condition_or_iterable {
                     let cond_ty = self.check_expr(cls, cond);
                     if let Some(cty) = cond_ty {
-                        if cty != Type::Bool {
+                        if !self.is_valid_condition_type(&cty) {
                             self.diagnostics.push(Diagnostic::error(
-                                format!("Loop condition must be Bool, found '{:?}'", cty),
+                                format!("Loop condition must be Bool or truthy expression, found '{:?}'", cty),
                                 Some(cond.span),
                             ));
                         }
@@ -321,6 +393,48 @@ impl TypeChecker {
             }
             StmtKind::Yield(expr) => {
                 self.check_expr(cls, expr);
+            }
+            StmtKind::Guard { body, error_var, check_body } => {
+                self.guard_depth += 1;
+                for s in body {
+                    self.check_stmt(cls, s);
+                }
+                self.guard_depth -= 1;
+
+                self.symbol_table.push_scope();
+                self.symbol_table.insert(Symbol {
+                    name: error_var.clone(),
+                    ty: Type::Nullable(Box::new(Type::Class { name: "Error".to_string() })),
+                    is_mutable: false,
+                });
+                for s in check_body {
+                    self.check_stmt(cls, s);
+                }
+                self.symbol_table.pop_scope();
+            }
+            StmtKind::Raise(expr) => {
+                if self.guard_depth == 0 && !self.current_method_is_async {
+                    self.diagnostics.push(Diagnostic::error(
+                        "'raise' can only be used inside a guard block".to_string(),
+                        Some(stmt.span),
+                    ));
+                }
+                let raise_ty = self.check_expr(cls, expr);
+                if let Some(rty) = raise_ty {
+                    let is_valid = match &rty {
+                        Type::String => true,
+                        Type::Class { name } => {
+                            name == "GenericError" || name == "Error" || self.traits.contains_key("Error")
+                        }
+                        _ => false,
+                    };
+                    if !is_valid {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!("raise target must be a string or satisfy 'Error', found primitive type '{:?}'", rty),
+                            Some(expr.span),
+                        ));
+                    }
+                }
             }
         }
     }
@@ -577,8 +691,54 @@ impl TypeChecker {
                 }
                 Some(Type::AnonymousObject { field_types })
             }
+            ExprKind::ListLiteral(elements) => {
+                for elem in elements {
+                    self.check_expr(cls, elem);
+                }
+                Some(Type::Class { name: "List".into() })
+            }
+            ExprKind::MapLiteral(pairs) => {
+                for (k, v) in pairs {
+                    self.check_expr(cls, k);
+                    self.check_expr(cls, v);
+                }
+                Some(Type::Class { name: "Map".into() })
+            }
+            ExprKind::IndexAccess { target, index } => {
+                let target_ty = self.check_expr(cls, target);
+                self.check_expr(cls, index);
+                if let Some(Type::Class { ref name }) = target_ty {
+                    if name == "Map" {
+                        return Some(Type::Nullable(Box::new(Type::Int)));
+                    }
+                }
+                Some(Type::Int)
+            }
+            ExprKind::AsyncSpawn(inner) => {
+                self.check_expr(cls, inner);
+                Some(Type::Class { name: "Task".into() })
+            }
+            ExprKind::Await(inner) => {
+                self.check_expr(cls, inner);
+                Some(Type::Int)
+            }
+            ExprKind::AwaitAndCancel { task, timeout_ms } => {
+                self.check_expr(cls, task);
+                self.check_expr(cls, timeout_ms);
+                Some(Type::Int)
+            }
             _ => None,
         }
+    }
+
+    fn is_valid_condition_type(&self, ty: &Type) -> bool {
+        matches!(
+            ty,
+            Type::Bool
+                | Type::Nullable(_)
+                | Type::Class { .. }
+                | Type::AnonymousObject { .. }
+        )
     }
 
     fn is_assignable_to(&self, from: &Type, to: &Type) -> bool {
