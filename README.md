@@ -108,6 +108,24 @@
 - **Standard Currencies**: `Currency.PHP`, `Currency.USD`, `Currency.EUR`, `Currency.JPY`, `Currency.GBP`.
 - **Financial Percentages & Rates**: `Percent(12)` and `Rate.percent(5.5)` for tax, interest, and discount calculations (`price.multiply(vat)`).
 
+### 19. Native Filesystem Standard Library (`File`, `FileInfo`, `Directory`, `Path`, `after`)
+- **Exception-Free File Operations**: High-performance IO without exceptions (`FileError`, `FileNotFoundError`, `PermissionError`, `AlreadyExistsError`, `InvalidPathError`, `DiskFullError`).
+- **Object-Oriented & Static Helpers**: `File.read("app.txt")`, `File.write("out.txt", data)`, `file = File.open(path)`, `file.read()`, `file.close()`.
+- **Deferred Cleanup**: Native deferred cleanup using `after file.close()` syntax.
+- **Directories & Paths**: `Directory.create("logs")`, `Path.join("src", "main.talas")`.
+
+### 20. High-Performance Web Server Standard Library (`Server`, `Request`, `Response`, `HTTP/1.1`, `HTTP/2`, `HTTP/3 QUIC`)
+- **Express / Ktor Ergonomics**: Express-style fluent routing: `server.get("/users") { request -> ... }`, `server.post()`, `server.put()`, `server.delete()`, `server.use()` (middleware), `server.static()`, `server.websocket()`, `server.start(8080)`.
+- **Multi-Protocol Support**: Default `HTTP/1.1` TCP transport, `server.enableHttp2()` for TLS ALPN multiplexing, and `server.enableHttp3(443)` for native UDP QUIC 0-RTT transport.
+- **Request & Response Ergonomics**: `request.pathLong("id")`, `request.query("search")`, `request.hasBearerToken()`, `request.cookie("session")`, `request.protocol()`, `request.isHttp3()`, `Response.ok("hello")`, `Response.json(data)`.
+
+### 21. First-Class Native JSON & XML Record Mapping (`Json`, `JsonObject`, `JsonArray`, `Xml`, `XmlDocument`, `XmlElement`)
+- **Bi-Directional Document & Class Mapping**: `Json.parse(text)`, `Json.partialParse(text, TargetClass)`, `Json.stringify(obj)`, `Json.from(obj)`, `Json.to(text, TargetClass)`.
+- **XML Document Traversal & Generation**: `Xml.parse(text)`, `Xml.create("root")`, `doc.root().child("tag").text()`, `doc.toString()`.
+- **Reversible Character Codec (`DataNameCodec`)**: Maps XML/JSON tag/key names with hyphens (`Facility-ID`), namespaces (`rest:KitchenOrderScan`), or dots to Talas identifier conventions (`Facility$hyphen$ID`, `rest$KitchenOrderScan`).
+- **Strict vs. Partial Parsing Modes**: Strict mode enforces 1-to-1 structural completeness; Partial mode selectively maps declared components while assigning defaults (`null`, `List.of()`, `0`, `false`).
+- **Structured Format Error Handling**: Exception-free error handling via `guard`/`check(err)` with `JsonParseError`, `XmlParseError`, `MissingDataError`, `ExcessDataError`.
+
 ---
 
 ## VS Code Extension & Syntax Highlighting
@@ -721,6 +739,110 @@ class Application {
         final vat = Percent(12)
         final tax = total.multiply(vat)
         print(`VAT Tax amount: ${tax.amount()}`)
+    }
+}
+```
+
+### 16. Native Filesystem & Deferred `after` Cleanup
+
+```java
+class Application {
+    main() {
+        // 1. One-shot static conveniences
+        File.write(`logs/app.txt`, `Server initialized\n`)
+        final content = File.read(`logs/app.txt`)
+        print(`Log content: ${content}`)
+
+        // 2. Object-oriented handle & deferred cleanup
+        guard {
+            final file = File.open(`data.csv`)
+            after file.close() // Native deferred cleanup execution
+
+            final data = file.read()
+            print(`Read ${data.len()} bytes`)
+        }
+        check(err) {
+            if (err is FileNotFoundError) {
+                print(`File missing: ${err.message()}`)
+            }
+        }
+    }
+}
+```
+
+### 17. High-Performance Native Web Server (`HTTP/1.1`, `HTTP/2`, `HTTP/3 QUIC`)
+
+```java
+class Application {
+    main() {
+        final server = Server()
+
+        // Enable HTTP/2 TLS ALPN and HTTP/3 UDP QUIC
+        server.enableHttp2()
+        server.enableHttp3(443)
+
+        // Fluent Express/Ktor style routing & middleware
+        server.use { req ->
+            print(`[${req.method()}] ${req.url()} (${req.protocol()})`)
+        }
+
+        server.get(`/users/{id}`) { request ->
+            long id = request.pathLong(`id`)
+            return Response.json(`{"id": ${id}, "name": "Lem"}`)
+        }
+
+        server.start(8080)
+    }
+}
+```
+
+### 18. First-Class Native JSON & XML Document and Record Mapping
+
+```java
+class KitchenOrderScan(
+    string RestaurantID,
+    string OrderType
+)
+
+class Application {
+    main() {
+        // 1. JSON Document Parsing & Getters
+        final jsonText = `{"restaurantID": "0603", "orderType": "DineIn"}`
+        final json = Json.parse(jsonText)
+        print(`Restaurant ID: ${json.getString(`restaurantID`)}`)
+
+        // 2. Strongly-Typed Record Mapping & Stringification
+        final scan = Json.partialParse(jsonText, KitchenOrderScan)
+        final formattedJson = Json.stringify(scan)
+        print(`JSON Stringified: ${formattedJson}`)
+
+        // 3. XML Traversal & Generation
+        final doc = Xml.create(`user`)
+        doc.root().element(`name`).text(`Lem`)
+        doc.root().element(`age`).text(`40`)
+        print(`Generated XML:\n${doc.toString()}`)
+    }
+}
+```
+
+### 19. Compile-Time Null Safety & Variable Initializers
+
+```java
+class User(string name = `Guest`)
+
+class Application {
+    main() {
+        // 1. Non-nullable type declaration automatically invokes default constructor User()
+        User u1          // Automatically calls User() constructor
+        User u2 = User() // Explicitly calls User() constructor
+
+        // 2. Nullable type declaration requires '?' and defaults to null
+        User? u3        // Defaults to null
+        User? u4 = null // Explicitly assigned null
+
+        // 3. Optional chaining & null coalescing
+        final displayName = u3?.name() ?? `Anonymous`
+        print(`Display Name: ${displayName}`)
     }
 }
 ```
