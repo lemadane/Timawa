@@ -3701,3 +3701,50 @@ fn test_e2e_for_expression_comprehension_with_braces_and_yield() {
         builder.diagnostics
     );
 }
+
+#[test]
+fn test_e2e_full_expression_and_lambda_string_interpolation() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final a = 10
+                final b = 20
+
+                // Arithmetic & Binary Operations
+                print(`Sum: ${a + b * 2}`)
+
+                // Immediately-Invoked Anonymous Function (Lambda)
+                print(`Calculated: ${ { (x) -> x * 21 }(2) }`)
+
+                // Expression evaluation inside interpolation
+                print(`Status: ${if (a > 5) { yield `High` } else { yield `Low` }}`)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing full expression string interpolation failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking full expression string interpolation failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let _ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building full expression string interpolation failed: {:?}",
+        builder.diagnostics
+    );
+}

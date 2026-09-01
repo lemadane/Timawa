@@ -1,5 +1,6 @@
 use super::nodes::*;
 use crate::diagnostics::Diagnostic;
+use crate::parser::parser::Precedence;
 use crate::parser::*;
 use crate::types::Type;
 use std::collections::HashMap;
@@ -847,9 +848,29 @@ impl IrBuilder {
                         if !prefix.is_empty() {
                             parts.push(IrOperand::ConstantString(prefix.to_string()));
                         }
-                        if let Some(end) = rest.find('}') {
-                            let var_name = &rest[2..end];
-                            if let Some((ptr, ty)) = self.lookup_var(var_name) {
+                        // Find matching closing brace balancing nested braces
+                        let mut depth = 0;
+                        let mut match_idx = None;
+                        for (idx, ch) in rest[1..].char_indices() {
+                            if ch == '{' {
+                                depth += 1;
+                            } else if ch == '}' {
+                                depth -= 1;
+                                if depth == 0 {
+                                    match_idx = Some(idx + 1);
+                                    break;
+                                }
+                            }
+                        }
+
+                        if let Some(end) = match_idx {
+                            let expr_str = &rest[2..end];
+                            let lexer = crate::lexer::Lexer::new(expr_str);
+                            let mut parser = crate::parser::Parser::new(lexer);
+                            if let Ok(parsed_expr) = parser.parse_expr(Precedence::None) {
+                                let expr_op = self.build_expr(&parsed_expr);
+                                parts.push(expr_op);
+                            } else if let Some((ptr, ty)) = self.lookup_var(expr_str) {
                                 let dest = self.fresh_reg();
                                 self.emit(IrInstruction::Load { dest, ptr, ty: ty.clone() });
                                 parts.push(IrOperand::Register(dest, ty));
