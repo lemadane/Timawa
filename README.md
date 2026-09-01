@@ -2,7 +2,7 @@
 
 > **Sharp, simple, native.**
 
-[![Language Specification](https://img.shields.io/badge/spec-v0.5.0-blue.svg)](LANGUAGE_SPEC_DRAFT.md)
+[![Language Specification](https://img.shields.io/badge/spec-v0.6.0-blue.svg)](LANGUAGE_SPEC_DRAFT.md)
 [![Compiler Status](https://img.shields.io/badge/compiler-Rust%20%2B%20LLVM-orange.svg)](ARCHITECTURE.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
