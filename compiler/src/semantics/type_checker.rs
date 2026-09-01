@@ -1029,7 +1029,7 @@ impl TypeChecker {
                     self.symbol_table.pop_scope();
                 }
             }
-            StmtKind::For { loop_var, index_var, condition_or_iterable, body } => {
+            StmtKind::For { loop_var, index_var, condition_or_iterable, body, else_branch } => {
                 self.symbol_table.push_scope();
                 if let Some(lvar) = loop_var {
                     self.symbol_table.insert(Symbol {
@@ -1047,12 +1047,14 @@ impl TypeChecker {
                 }
                 if let Some(cond) = condition_or_iterable {
                     let cond_ty = self.check_expr(cls, cond);
-                    if let Some(cty) = cond_ty {
-                        if !self.is_valid_condition_type(&cty) {
-                            self.diagnostics.push(Diagnostic::error(
-                                format!("Loop condition must be Bool or truthy expression, found '{:?}'", cty),
-                                Some(cond.span),
-                            ));
+                    if loop_var.is_none() {
+                        if let Some(cty) = cond_ty {
+                            if !self.is_valid_condition_type(&cty) {
+                                self.diagnostics.push(Diagnostic::error(
+                                    format!("Loop condition must be Bool or truthy expression, found '{:?}'", cty),
+                                    Some(cond.span),
+                                ));
+                            }
                         }
                     }
                 }
@@ -1062,11 +1064,19 @@ impl TypeChecker {
                 }
                 self.loop_depth -= 1;
                 self.symbol_table.pop_scope();
+
+                if let Some(eb) = else_branch {
+                    self.symbol_table.push_scope();
+                    for s in eb {
+                        self.check_stmt(cls, s);
+                    }
+                    self.symbol_table.pop_scope();
+                }
             }
             StmtKind::Break => {
-                if self.loop_depth == 0 {
+                if self.loop_depth == 0 && self.guard_depth == 0 {
                     self.diagnostics.push(Diagnostic::error(
-                        "'break' can only be used inside a loop".to_string(),
+                        "'break' can only be used inside a loop or guard block".to_string(),
                         Some(stmt.span),
                     ));
                 }
@@ -1080,6 +1090,12 @@ impl TypeChecker {
                 }
             }
             StmtKind::Return(expr_opt) => {
+                if self.guard_depth > 0 {
+                    self.diagnostics.push(Diagnostic::error(
+                        "'return' is not allowed inside a guard block".to_string(),
+                        Some(stmt.span),
+                    ));
+                }
                 if let Some(expected_ret) = self.current_return_type.clone() {
                     if expected_ret == Type::Void {
                         if expr_opt.is_some() {
@@ -1111,33 +1127,39 @@ impl TypeChecker {
             StmtKind::Yield(expr) => {
                 self.check_expr(cls, expr);
             }
-            StmtKind::Guard { body, error_var, check_body } => {
+            StmtKind::Guard { body, catch_clause, exit_body } => {
                 self.guard_depth += 1;
                 for s in body {
                     self.check_stmt(cls, s);
                 }
-                self.guard_depth -= 1;
-
-                self.symbol_table.push_scope();
-                self.symbol_table.insert(Symbol {
-                    name: error_var.clone(),
-                    ty: Type::Nullable(Box::new(Type::Class { name: "Error".to_string() })),
-                    is_mutable: false,
-                });
-                for s in check_body {
-                    self.check_stmt(cls, s);
+                if let Some((error_var, c_body)) = catch_clause {
+                    self.symbol_table.push_scope();
+                    self.symbol_table.insert(Symbol {
+                        name: error_var.clone(),
+                        ty: Type::Nullable(Box::new(Type::Class { name: "Error".to_string() })),
+                        is_mutable: false,
+                    });
+                    for s in c_body {
+                        self.check_stmt(cls, s);
+                    }
+                    self.symbol_table.pop_scope();
                 }
-                self.symbol_table.pop_scope();
+                if let Some(e_body) = exit_body {
+                    for s in e_body {
+                        self.check_stmt(cls, s);
+                    }
+                }
+                self.guard_depth -= 1;
             }
-            StmtKind::Raise(expr) => {
+            StmtKind::Throw(expr) => {
                 if self.guard_depth == 0 && !self.current_method_is_async {
                     self.diagnostics.push(Diagnostic::error(
-                        "'raise' can only be used inside a guard block".to_string(),
+                        "'throw' can only be used inside a guard block".to_string(),
                         Some(stmt.span),
                     ));
                 }
-                let raise_ty = self.check_expr(cls, expr);
-                if let Some(rty) = raise_ty {
+                let throw_ty = self.check_expr(cls, expr);
+                if let Some(rty) = throw_ty {
                     let is_valid = match &rty {
                         Type::String => true,
                         Type::Class { name } => {
@@ -1147,8 +1169,8 @@ impl TypeChecker {
                     };
                     if !is_valid {
                         self.diagnostics.push(Diagnostic::error(
-                            format!("raise target must be a string or satisfy 'Error', found primitive type '{:?}'", rty),
-                            Some(expr.span),
+                            format!("throw target must be a string or satisfy 'Error', found primitive type '{:?}'", rty),
+                            Some(stmt.span),
                         ));
                     }
                 }

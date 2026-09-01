@@ -1356,12 +1356,14 @@ fn test_e2e_guard_check_no_error_flow() {
             main() {
                 guard {
                     print(`Step 1`)
-                }
-                check(err) {
-                    if (err) {
+
+                    catch(err) {
                         print(`Error occurred`)
                     }
-                    print(`Cleanup`)
+
+                    exit {
+                        print(`Cleanup`)
+                    }
                 }
             }
         }
@@ -1414,15 +1416,16 @@ fn test_e2e_guard_raise_check_error_flow() {
         class Application {
             main() {
                 guard {
-                    print(`Before raise`)
-                    raise(CustomError(`Something went wrong`))
-                    print(`Unreachable after raise`)
-                }
-                check(err) {
-                    if (err) {
+                    print(`Before throw`)
+                    throw(CustomError(`Something went wrong`))
+
+                    catch(err) {
                         print(`Handled error`)
                     }
-                    print(`Cleanup always runs`)
+
+                    exit {
+                        print(`Cleanup always runs`)
+                    }
                 }
             }
         }
@@ -1468,7 +1471,7 @@ fn test_e2e_raise_outside_guard_emits_diagnostic() {
     let source_code = r#"
         class Application {
             main() {
-                raise(`Error outside guard`)
+                throw(`Error outside guard`)
             }
         }
     "#;
@@ -1482,7 +1485,7 @@ fn test_e2e_raise_outside_guard_emits_diagnostic() {
 
     assert!(
         !checker.diagnostics.is_empty(),
-        "Expected 'raise' outside guard block to produce diagnostic error"
+        "Expected 'throw' outside guard block to produce diagnostic error"
     );
 }
 
@@ -1492,10 +1495,9 @@ fn test_e2e_guard_raise_string_interpolation_flow() {
         class App {
             main() {
                 guard {
-                    raise(`an error occurred`)
-                }
-                check(error) {
-                    if (error) {
+                    throw(`an error occurred`)
+
+                    catch(error) {
                         print(`${error}`)
                     }
                 }
@@ -1544,10 +1546,11 @@ fn test_e2e_raise_primitive_emits_diagnostic() {
         class Application {
             main() {
                 guard {
-                    raise(123)
-                }
-                check(err) {
-                    print(`Cleanup`)
+                    throw(123)
+
+                    exit {
+                        print(`Cleanup`)
+                    }
                 }
             }
         }
@@ -1562,12 +1565,12 @@ fn test_e2e_raise_primitive_emits_diagnostic() {
 
     assert!(
         !is_valid,
-        "Type checker must reject raising primitive numbers"
+        "Type checker must reject throwing primitive numbers"
     );
 
     assert!(
-        checker.diagnostics.iter().any(|d| d.message.contains("raise target must be a string or satisfy 'Error'")),
-        "Expected primitive raise diagnostic, got: {:?}",
+        checker.diagnostics.iter().any(|d| d.message.contains("throw target must be a string or satisfy 'Error'")),
+        "Expected primitive throw diagnostic, got: {:?}",
         checker.diagnostics
     );
 }
@@ -1584,10 +1587,9 @@ fn test_e2e_raise_custom_class_error_trait() {
         class Application {
             main() {
                 guard {
-                    raise(CustomError(404, `Not Found`))
-                }
-                check(err) {
-                    if (err) {
+                    throw(CustomError(404, `Not Found`))
+
+                    catch(err) {
                         print(err.message())
                     }
                 }
@@ -1691,9 +1693,8 @@ fn test_e2e_list_index_out_of_bounds_raises_error() {
                 guard {
                     final list = [1, 2]
                     print(list[10])
-                }
-                check(err) {
-                    if (err) {
+
+                    catch(err) {
                         print(err.message())
                     }
                 }
@@ -1758,16 +1759,15 @@ fn test_e2e_async_task_raise_rethrown_on_await() {
     let source_code = r#"
         class Application {
             async riskyTask() {
-                raise(`async task error`)
+                throw(`async task error`)
             }
 
             main() {
                 guard {
                     final task = this.riskyTask()
                     await task
-                }
-                check(err) {
-                    if (err) {
+
+                    catch(err) {
                         print(err.message())
                     }
                 }
@@ -1895,15 +1895,15 @@ fn test_e2e_guard_check_inside_async_method_body() {
     let source_code = r#"
         class Application {
             async safeTask() {
+                var res = 0
                 guard {
-                    raise(`inner async error`)
-                }
-                check(err) {
-                    if (err) {
-                        return 42
+                    throw(`inner async error`)
+
+                    catch(err) {
+                        res = 42
                     }
                 }
-                return 0
+                return res
             }
 
             main() {
@@ -1967,16 +1967,15 @@ fn test_e2e_task_all_combinator_fail_fast() {
     let source_code = r#"
         class Application {
             async failingTask() {
-                raise(`task 2 failed`)
+                throw(`task 2 failed`)
             }
 
             main() {
                 guard {
                     final tasks = [async 10, this.failingTask()]
                     await Task.all(tasks)
-                }
-                check(err) {
-                    if (err) {
+
+                    catch(err) {
                         print(err.message())
                     }
                 }
@@ -2072,9 +2071,8 @@ fn test_e2e_await_and_cancel_timeout() {
                     final task = async 500
                     final res = awaitAndCancel(task, 2000)
                     print(res)
-                }
-                check(err) {
-                    if (err) {
+
+                    catch(err) {
                         print(err.message())
                     }
                 }
@@ -2552,9 +2550,8 @@ fn test_e2e_geolocation_current_and_error() {
                 guard {
                     final pos = Geolocation.current()
                     print(pos.latitude())
-                }
-                check(err) {
-                    if (err) {
+
+                    catch(err) {
                         print(err.message())
                     }
                 }
@@ -2849,9 +2846,8 @@ fn test_e2e_file_open_object_read_after_close() {
                     after file.close()
                     final text = file.read()
                     print(text)
-                }
-                check(err) {
-                    if (err) {
+
+                    catch(err) {
                         print(err.message())
                     }
                 }
@@ -2954,10 +2950,11 @@ fn test_e2e_file_error_handling_guard_check() {
                 guard {
                     final content = File.read(`non_existent_file_999.txt`)
                     print(content)
-                }
-                check(err) {
-                    if (err is FileNotFoundError) {
-                        print(`File does not exist`)
+
+                    catch(err) {
+                        if (err is FileNotFoundError) {
+                            print(`File does not exist`)
+                        }
                     }
                 }
             }
@@ -3208,10 +3205,11 @@ fn test_e2e_json_parse_error_handling() {
             main() {
                 guard {
                     final data = Json.parse(`{invalid_json}`)
-                }
-                check(err) {
-                    if (err is JsonParseError) {
-                        print(err.message())
+
+                    catch(err) {
+                        if (err is JsonParseError) {
+                            print(err.message())
+                        }
                     }
                 }
             }
@@ -3447,5 +3445,175 @@ fn test_e2e_non_nullable_declaration_null_assignment_invalid() {
     assert!(
         !is_valid || !checker.diagnostics.is_empty(),
         "Expected assigning null to non-nullable type User to produce a diagnostic error"
+    );
+}
+
+#[test]
+fn test_e2e_return_inside_guard_emits_diagnostic() {
+    let source_code = r#"
+        class Application {
+            int getValue() {
+                guard {
+                    return 42
+
+                    catch(err) {
+                        print(err.message())
+                    }
+                }
+                return 0
+            }
+
+            main() {
+                this.getValue()
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    let mut checker = TypeChecker::new();
+    let is_valid = checker.check_program(&program);
+
+    assert!(
+        !is_valid || !checker.diagnostics.is_empty(),
+        "Expected return inside guard to produce diagnostic error"
+    );
+
+    assert!(
+        checker.diagnostics.iter().any(|d| d.message.contains("'return' is not allowed inside a guard block")),
+        "Expected return inside guard diagnostic, got: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_break_inside_guard_early_exit() {
+    let source_code = r#"
+        class Application {
+            main() {
+                guard {
+                    print(`Before break`)
+                    break
+                    print(`Unreachable after break`)
+
+                    exit {
+                        print(`Exit cleanup runs on break`)
+                    }
+                }
+                print(`After guard block`)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing break inside guard failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking break inside guard failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let _ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building break inside guard failed: {:?}",
+        builder.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_for_else_empty_collection_executes_else() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final emptyItems = []
+                for (item in emptyItems) {
+                    print(`Loop body executed`)
+                } else {
+                    print(`Else block executed for 0 iterations`)
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing for/else failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking for/else failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let _ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building for/else failed: {:?}",
+        builder.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_for_else_non_empty_collection_skips_else() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final items = [10, 20, 30]
+                for (item in items) {
+                    print(`Loop body item ${item}`)
+                } else {
+                    print(`Else block should be skipped`)
+                }
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing for/else non-empty failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking for/else non-empty failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let _ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building for/else non-empty failed: {:?}",
+        builder.diagnostics
     );
 }

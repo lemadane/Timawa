@@ -218,6 +218,7 @@ pub enum StmtKind {
         index_var: Option<String>,
         condition_or_iterable: Option<Expr>,
         body: Vec<Stmt>,
+        else_branch: Option<Vec<Stmt>>,
     },
     Break,
     Continue,
@@ -225,10 +226,10 @@ pub enum StmtKind {
     Yield(Expr),
     Guard {
         body: Vec<Stmt>,
-        error_var: String,
-        check_body: Vec<Stmt>,
+        catch_clause: Option<(String, Vec<Stmt>)>,
+        exit_body: Option<Vec<Stmt>>,
     },
-    Raise(Expr),
+    Throw(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq)]

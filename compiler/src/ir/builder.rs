@@ -16,6 +16,7 @@ pub struct IrBuilder {
     class_decls: HashMap<String, ClassDecl>,
     loop_stack: Vec<(BlockId, BlockId)>,
     guard_stack: Vec<(Register, BlockId)>,
+    guard_exit_stack: Vec<BlockId>,
     current_block_id: Option<BlockId>,
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -34,6 +35,7 @@ impl IrBuilder {
             class_decls: HashMap::new(),
             loop_stack: Vec::new(),
             guard_stack: Vec::new(),
+            guard_exit_stack: Vec::new(),
             current_block_id: None,
             diagnostics: Vec::new(),
         }
@@ -552,10 +554,27 @@ impl IrBuilder {
 
                 self.current_block_id = Some(merge_block);
             }
-            StmtKind::For { condition_or_iterable, body, .. } => {
+            StmtKind::For { condition_or_iterable, body, else_branch, .. } => {
                 let header_block = self.fresh_block();
                 let body_block = self.fresh_block();
                 let exit_block = self.fresh_block();
+
+                let has_iter_ptr = if else_branch.is_some() {
+                    let ptr = self.fresh_reg();
+                    self.emit(IrInstruction::Alloca { dest: ptr, ty: Type::Bool });
+                    self.emit(IrInstruction::Store { val: IrOperand::ConstantBool(false), ptr });
+                    Some(ptr)
+                } else {
+                    None
+                };
+
+                let else_check_block = if else_branch.is_some() {
+                    Some(self.fresh_block())
+                } else {
+                    None
+                };
+
+                let false_target = else_check_block.unwrap_or(exit_block);
 
                 self.emit(IrInstruction::Jump { target: header_block });
                 if let Some(cb) = self.current_block_id {
@@ -591,11 +610,15 @@ impl IrBuilder {
                 self.emit(IrInstruction::Branch {
                     cond: cond_op,
                     then_block: body_block,
-                    else_block: exit_block,
+                    else_block: false_target,
                 });
                 self.finish_block(header_block);
 
                 self.current_block_id = Some(body_block);
+                if let Some(ptr) = has_iter_ptr {
+                    self.emit(IrInstruction::Store { val: IrOperand::ConstantBool(true), ptr });
+                }
+
                 self.loop_stack.push((header_block, exit_block));
                 self.push_var_scope();
                 for s in body {
@@ -613,10 +636,42 @@ impl IrBuilder {
                 self.pop_var_scope();
                 self.loop_stack.pop();
 
+                if let (Some(check_block), Some(e_stmts), Some(ptr)) = (else_check_block, else_branch, has_iter_ptr) {
+                    self.current_block_id = Some(check_block);
+                    let has_iter_reg = self.fresh_reg();
+                    self.emit(IrInstruction::Load { dest: has_iter_reg, ptr, ty: Type::Bool });
+
+                    let else_block = self.fresh_block();
+                    self.emit(IrInstruction::Branch {
+                        cond: IrOperand::Register(has_iter_reg, Type::Bool),
+                        then_block: exit_block,
+                        else_block,
+                    });
+                    self.finish_block(check_block);
+
+                    self.current_block_id = Some(else_block);
+                    self.push_var_scope();
+                    for s in e_stmts {
+                        self.build_stmt(s);
+                        if self.is_current_terminated() {
+                            break;
+                        }
+                    }
+                    if !self.is_current_terminated() {
+                        self.emit(IrInstruction::Jump { target: exit_block });
+                    }
+                    if let Some(cb) = self.current_block_id {
+                        self.finish_block(cb);
+                    }
+                    self.pop_var_scope();
+                }
+
                 self.current_block_id = Some(exit_block);
             }
             StmtKind::Break => {
                 if let Some((_, exit_target)) = self.loop_stack.last().cloned() {
+                    self.emit(IrInstruction::Jump { target: exit_target });
+                } else if let Some(exit_target) = self.guard_exit_stack.last().cloned() {
                     self.emit(IrInstruction::Jump { target: exit_target });
                 }
             }
@@ -633,14 +688,18 @@ impl IrBuilder {
                 let val = self.build_expr(expr);
                 self.emit(IrInstruction::Return { val: Some(val) });
             }
-            StmtKind::Guard { body, error_var, check_body } => {
+            StmtKind::Guard { body, catch_clause, exit_body } => {
                 let err_ty = Type::Nullable(Box::new(Type::Class { name: "Error".into() }));
                 let err_ptr = self.fresh_reg();
                 self.emit(IrInstruction::Alloca { dest: err_ptr, ty: err_ty.clone() });
                 self.emit(IrInstruction::Store { val: IrOperand::Null, ptr: err_ptr });
 
-                let check_block = self.fresh_block();
-                self.guard_stack.push((err_ptr, check_block));
+                let catch_target = self.fresh_block();
+                let exit_target = self.fresh_block();
+                let merge_target = self.fresh_block();
+
+                self.guard_stack.push((err_ptr, catch_target));
+                self.guard_exit_stack.push(exit_target);
 
                 self.push_var_scope();
                 for s in body {
@@ -650,36 +709,77 @@ impl IrBuilder {
                     }
                 }
                 if !self.is_current_terminated() {
-                    self.emit(IrInstruction::Jump { target: check_block });
+                    self.emit(IrInstruction::Jump { target: exit_target });
                 }
                 if let Some(cb) = self.current_block_id {
                     self.finish_block(cb);
                 }
                 self.pop_var_scope();
                 self.guard_stack.pop();
+                self.guard_exit_stack.pop();
 
-                self.current_block_id = Some(check_block);
-                self.push_var_scope();
-                self.insert_var(error_var.clone(), err_ptr, err_ty);
-                for s in check_body {
-                    self.build_stmt(s);
-                    if self.is_current_terminated() {
-                        break;
+                // Catch Block
+                self.current_block_id = Some(catch_target);
+                if let Some((error_var, c_body)) = catch_clause {
+                    self.push_var_scope();
+                    self.insert_var(error_var.clone(), err_ptr, err_ty);
+                    for s in c_body {
+                        self.build_stmt(s);
+                        if self.is_current_terminated() {
+                            break;
+                        }
+                    }
+                    if !self.is_current_terminated() {
+                        self.emit(IrInstruction::Jump { target: exit_target });
+                    }
+                    if let Some(cb) = self.current_block_id {
+                        self.finish_block(cb);
+                    }
+                    self.pop_var_scope();
+                } else {
+                    self.emit(IrInstruction::Jump { target: exit_target });
+                    if let Some(cb) = self.current_block_id {
+                        self.finish_block(cb);
                     }
                 }
-                self.pop_var_scope();
+
+                // Exit Block (cleanup)
+                self.current_block_id = Some(exit_target);
+                if let Some(e_body) = exit_body {
+                    self.push_var_scope();
+                    for s in e_body {
+                        self.build_stmt(s);
+                        if self.is_current_terminated() {
+                            break;
+                        }
+                    }
+                    if !self.is_current_terminated() {
+                        self.emit(IrInstruction::Jump { target: merge_target });
+                    }
+                    if let Some(cb) = self.current_block_id {
+                        self.finish_block(cb);
+                    }
+                    self.pop_var_scope();
+                } else {
+                    self.emit(IrInstruction::Jump { target: merge_target });
+                    if let Some(cb) = self.current_block_id {
+                        self.finish_block(cb);
+                    }
+                }
+
+                self.current_block_id = Some(merge_target);
             }
-            StmtKind::Raise(expr) => {
+            StmtKind::Throw(expr) => {
                 let mut val_op = self.build_expr(expr);
                 if val_op.get_type() == Type::String {
                     val_op = self.build_class_instantiation("GenericError", &[expr.clone()]);
                 }
-                if let Some((err_ptr, check_target)) = self.guard_stack.last().cloned() {
+                if let Some((err_ptr, catch_target)) = self.guard_stack.last().cloned() {
                     self.emit(IrInstruction::Store { val: val_op, ptr: err_ptr });
-                    self.emit(IrInstruction::Jump { target: check_target });
+                    self.emit(IrInstruction::Jump { target: catch_target });
                 } else {
                     self.diagnostics.push(Diagnostic::error(
-                        "'raise' can only be used inside a guard block",
+                        "'throw' can only be used inside a guard block",
                         Some(expr.span),
                     ));
                 }

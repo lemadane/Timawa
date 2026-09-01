@@ -64,7 +64,8 @@
 
 ### 12. Collections Policy & Unified `for` Loops (No `while` Keyword)
 - **`for` is the Sole Loop Keyword**: There is no `while` or `do-while` keyword in Talas.
-- **`break` & `continue`**: `break` exits the nearest loop; `continue` skips to the next iteration.
+- **`for` / `else` (0-Iteration Fallback)**: `for (item in items) { ... } else { ... }`. The `else` block executes **ONLY if the loop body executed 0 times** (e.g. collection is empty `[]`, `null`, or condition is initially `false`).
+- **`break` & `continue`**: `break` exits the nearest loop or guard block; `continue` skips to the next iteration.
 - **`Array<T>`**: Fixed-size contiguous buffer (`Array<int>(10)`).
 - **`List<T>`**: Dynamic growable sequence (`[1, 2, 3]` literal syntax, `.add()`, `.remove()`).
 - **`Map<K, V>`**: Key-value hash map (`[1000L: `Lem`]` literal syntax, bracket lookup returns `V?`, key-value `for (k, v in map)` iteration).
@@ -78,18 +79,19 @@
 - **Framework-Neutral Concurrency**: Patterned after Java's `vt-async-await` Virtual Threads model. Non-reactive, cheap sequential blocking `await`.
 - **Spawning Tasks**: `async expr`, `Task.async(expr)`, or `async worker.process(1)`.
 - **Promise Combinators**:
-  - `Task.all(tasks)`: Fail-fast combinator (cancels remaining tasks on failure, re-throwing error into `check(err)`).
+  - `Task.all(tasks)`: Fail-fast combinator (cancels remaining tasks on failure, re-throwing error into `catch(err)`).
   - `Task.any(tasks)`: Returns the result of the first task that successfully completes.
   - `Task.race(tasks)`: Returns outcome of the first completed task (cancels remaining tasks).
   - `Task.allSettled(tasks)`: Awaits all tasks to complete without throwing.
 - **Timeouts & Cancellation**: `awaitAndCancel(task, timeoutMs)`, `task.cancel()`.
 - **Inter-Task Channels**: Communication via typed `Channel` queue (`.send()`, `.receive()`).
 
-### 15. Exception Model (`guard` / `raise` / `check(err)`)
-- **Guard Blocks**: `guard { ... } check(err) { ... }` handles errors without traditional `try`/`catch`/`throw`.
-- **Built-in `Error` Trait**: Built-in contract requiring `string message()` and default `string stacktrace()`.
-- **Automatic String Auto-Boxing**: `raise("msg")` automatically auto-boxes plain text into `GenericError("msg")`.
-- **Runtime Bounds Protection**: Index access out of bounds automatically raises `OutOfBoundsError` (caught in `check(err)`).
+### 15. Exception Model (`guard { ... catch(err) { ... } exit { ... } }` & `throw`)
+- **Unified Guard Scope**: `guard { ... catch(err) { ... } exit { ... } }` handles errors and resource cleanup in one single unified block.
+- **`catch(err)` Clause**: Executes exclusively when an error is thrown inside `guard`.
+- **`exit` Cleanup Clause**: Acts as the `finally`/cleanup block under `guard {}`, executing reliably on both success and error exit paths.
+- **`return` Disallowance**: `return` inside a `guard` block is prohibited to guarantee predictable cleanup execution.
+- **`throw` Keyword**: `throw("msg")` or `throw CustomError(...)` throws error objects or strings (auto-boxed to `GenericError`).
 
 ### 16. Lambdas & Method References
 - **Brace Syntax**: `{ (x) -> x * 2 }`.
@@ -527,6 +529,14 @@ class Application {
             }
             print(`Range index: ${i}`)
         }
+
+        // Case 7: for / else 0-Iteration Fallback Clause
+        final List<string> emptyItems = []
+        for (item in emptyItems) {
+            print(`Item: ${item}`)
+        } else {
+            print(`No items found (else executed for 0 iterations)`)
+        }
     }
 }
 ```
@@ -629,9 +639,8 @@ class Application {
             ]
             final results = await Task.all(tasks)
             print(`All tasks finished with ${results.len()} results`)
-        }
-        check(err) {
-            if (err) {
+
+            catch(err) {
                 print(`Task failed: ${err.message()}`)
             }
         }
@@ -662,9 +671,8 @@ class Application {
         // 3. Out-of-bounds error handling
         guard {
             print(numbers[10]) // Out of bounds!
-        }
-        check(err) {
-            if (err) {
+
+            catch(err) {
                 print(`Caught error: ${err.message()}`)
             }
         }
@@ -672,18 +680,21 @@ class Application {
 }
 ```
 
-### 13. Structured Exception Model (`guard`, `raise`, `check(err)`)
+### 13. Structured Exception Model (`guard { ... catch(err) { ... } exit { ... } }` & `throw`)
 
 ```java
 class Application {
     main() {
         guard {
-            // Auto-boxed string raise into GenericError
-            raise(`Invalid user request`)
-        }
-        check(err) {
-            if (err) {
+            // Auto-boxed string throw into GenericError
+            throw(`Invalid user request`)
+
+            catch(err) {
                 print(`Caught error message: ${err.message()}`)
+            }
+
+            exit {
+                print(`Guard exit cleanup executed`)
             }
         }
     }

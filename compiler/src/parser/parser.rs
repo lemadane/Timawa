@@ -489,7 +489,7 @@ impl<'a> Parser<'a> {
             TokenKind::Return => self.parse_return_stmt(),
             TokenKind::Yield => self.parse_yield_stmt(),
             TokenKind::Guard => self.parse_guard_stmt(),
-            TokenKind::Raise => self.parse_raise_stmt(),
+            TokenKind::Throw => self.parse_throw_stmt(),
             TokenKind::After => self.parse_after_stmt(),
             _ => self.parse_expr_or_typed_decl_stmt(),
         }
@@ -509,46 +509,59 @@ impl<'a> Parser<'a> {
         let start_span = self.current_token.span;
         self.expect(&TokenKind::Guard, "guard")?;
         self.expect(&TokenKind::OpenBrace, "{")?;
+
         let mut body = Vec::new();
-        while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
-            body.push(self.parse_stmt()?);
-        }
-        self.expect(&TokenKind::CloseBrace, "}")?;
+        let mut catch_clause = None;
+        let mut exit_body = None;
 
-        self.expect(&TokenKind::Check, "check")?;
-        self.expect(&TokenKind::OpenParen, "(")?;
-        let error_var = match self.current_token.kind.clone() {
-            TokenKind::Identifier(name) => {
-                self.advance();
-                name
-            }
-            _ => {
-                self.diagnostics.push(Diagnostic::error("Expected error variable name in check(err)", Some(self.current_token.span)));
-                return Err(());
-            }
-        };
-        self.expect(&TokenKind::CloseParen, ")")?;
-
-        self.expect(&TokenKind::OpenBrace, "{")?;
-        let mut check_body = Vec::new();
         while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
-            check_body.push(self.parse_stmt()?);
+            if self.match_token(&TokenKind::Catch) {
+                self.expect(&TokenKind::OpenParen, "(")?;
+                let error_var = match self.current_token.kind.clone() {
+                    TokenKind::Identifier(name) => {
+                        self.advance();
+                        name
+                    }
+                    _ => {
+                        self.diagnostics.push(Diagnostic::error("Expected error variable name in catch(err)", Some(self.current_token.span)));
+                        return Err(());
+                    }
+                };
+                self.expect(&TokenKind::CloseParen, ")")?;
+                self.expect(&TokenKind::OpenBrace, "{")?;
+                let mut c_body = Vec::new();
+                while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
+                    c_body.push(self.parse_stmt()?);
+                }
+                self.expect(&TokenKind::CloseBrace, "}")?;
+                catch_clause = Some((error_var, c_body));
+            } else if self.match_token(&TokenKind::Exit) {
+                self.expect(&TokenKind::OpenBrace, "{")?;
+                let mut e_body = Vec::new();
+                while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
+                    e_body.push(self.parse_stmt()?);
+                }
+                self.expect(&TokenKind::CloseBrace, "}")?;
+                exit_body = Some(e_body);
+            } else {
+                body.push(self.parse_stmt()?);
+            }
         }
         let end_span = self.expect(&TokenKind::CloseBrace, "}")?.span;
 
         Ok(Stmt {
             kind: StmtKind::Guard {
                 body,
-                error_var,
-                check_body,
+                catch_clause,
+                exit_body,
             },
             span: Span::combine(start_span, end_span),
         })
     }
 
-    fn parse_raise_stmt(&mut self) -> Result<Stmt, ()> {
+    fn parse_throw_stmt(&mut self) -> Result<Stmt, ()> {
         let start_span = self.current_token.span;
-        self.expect(&TokenKind::Raise, "raise")?;
+        self.expect(&TokenKind::Throw, "throw")?;
         let expr = if self.match_token(&TokenKind::OpenParen) {
             let inner = self.parse_expr(Precedence::None)?;
             self.expect(&TokenKind::CloseParen, ")")?;
@@ -560,7 +573,7 @@ impl<'a> Parser<'a> {
         self.match_token(&TokenKind::Semicolon);
 
         Ok(Stmt {
-            kind: StmtKind::Raise(expr),
+            kind: StmtKind::Throw(expr),
             span: Span::combine(start_span, end_span),
         })
     }
@@ -766,7 +779,19 @@ impl<'a> Parser<'a> {
         while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
             body.push(self.parse_stmt()?);
         }
-        let end_span = self.expect(&TokenKind::CloseBrace, "}")?.span;
+        let mut end_span = self.expect(&TokenKind::CloseBrace, "}")?.span;
+
+        let else_branch = if self.match_token(&TokenKind::Else) {
+            self.expect(&TokenKind::OpenBrace, "{")?;
+            let mut else_stmts = Vec::new();
+            while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
+                else_stmts.push(self.parse_stmt()?);
+            }
+            end_span = self.expect(&TokenKind::CloseBrace, "}")?.span;
+            Some(else_stmts)
+        } else {
+            None
+        };
 
         Ok(Stmt {
             kind: StmtKind::For {
@@ -774,6 +799,7 @@ impl<'a> Parser<'a> {
                 index_var,
                 condition_or_iterable,
                 body,
+                else_branch,
             },
             span: Span::combine(start_span, end_span),
         })
@@ -1274,7 +1300,13 @@ impl<'a> Parser<'a> {
                     TokenKind::Xnor => BinaryOp::Xnor,
                     TokenKind::QuestionQuestion => BinaryOp::NullCoalescing,
                     TokenKind::DotDot => BinaryOp::Range,
-                    _ => unreachable!(),
+                    _ => {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!("Unexpected binary operator {:?}", tok.kind),
+                            Some(tok.span),
+                        ));
+                        return Err(());
+                    }
                 };
                 let span = Span::combine(left.span, right.span);
                 Ok(Expr {
