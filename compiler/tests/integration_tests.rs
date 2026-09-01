@@ -3717,7 +3717,7 @@ fn test_e2e_full_expression_and_lambda_string_interpolation() {
                 print(`Calculated: ${ { (x) -> x * 21 }(2) }`)
 
                 // Expression evaluation inside interpolation
-                print(`Status: ${if (a > 5) { yield `High` } else { yield `Low` }}`)
+                print(`Status: ${if (a > 5) { yield \`High\` } else { yield \`Low\` }}`)
             }
         }
     "#;

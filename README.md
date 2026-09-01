@@ -825,7 +825,7 @@ class Application {
         // 1. JSON Document Parsing & Getters
         final jsonText = `{"restaurantID": "0603", "orderType": "DineIn"}`
         final json = Json.parse(jsonText)
-        print(`Restaurant ID: ${json.getString(`restaurantID`)}`)
+        print(`Restaurant ID: ${json.getString(\`restaurantID\`)}`)
 
         // 2. Strongly-Typed Record Mapping & Stringification
         final scan = Json.partialParse(jsonText, KitchenOrderScan)
