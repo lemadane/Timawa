@@ -93,6 +93,12 @@
 - **`return` Disallowance**: `return` inside a `guard` block is prohibited to guarantee predictable cleanup execution.
 - **`throw` Keyword**: `throw("msg")` or `throw CustomError(...)` throws error objects or strings (auto-boxed to `GenericError`).
 
+### 16. First-Class `if` Expressions & `for` Comprehensions (Mandatory `{}` & `yield`)
+- **Expression Evaluation**: Both `if` and `for` can be evaluated directly as expressions (`final x = if (...) { ... }`).
+- **Mandatory Braces `{}`**: ALL `if` expressions and `for` expressions require `{}` open and close braces.
+- **Mandatory `yield` Keyword**: Emitting values from expression blocks requires `yield expr` (e.g. `final status = if (score >= 50) { yield `Passed` } else { yield `Failed` }`).
+- **`for` Expression Comprehensions**: `final doubled = for (x in numbers) { yield x * 2 }` transforms collections into `List<T>`.
+
 ### 16. Lambdas & Method References
 - **Brace Syntax**: `{ (x) -> x * 2 }`.
 - **Compiler Lowering**: Lowered to synthetic, immutable single-method closure classes.

@@ -17,6 +17,7 @@ pub struct IrBuilder {
     loop_stack: Vec<(BlockId, BlockId)>,
     guard_stack: Vec<(Register, BlockId)>,
     guard_exit_stack: Vec<BlockId>,
+    yield_target_stack: Vec<(Option<Register>, Option<Register>)>,
     current_block_id: Option<BlockId>,
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -36,6 +37,7 @@ impl IrBuilder {
             loop_stack: Vec::new(),
             guard_stack: Vec::new(),
             guard_exit_stack: Vec::new(),
+            yield_target_stack: Vec::new(),
             current_block_id: None,
             diagnostics: Vec::new(),
         }
@@ -554,7 +556,7 @@ impl IrBuilder {
 
                 self.current_block_id = Some(merge_block);
             }
-            StmtKind::For { condition_or_iterable, body, else_branch, .. } => {
+            StmtKind::For { loop_var, index_var, condition_or_iterable, body, else_branch } => {
                 let header_block = self.fresh_block();
                 let body_block = self.fresh_block();
                 let exit_block = self.fresh_block();
@@ -621,6 +623,16 @@ impl IrBuilder {
 
                 self.loop_stack.push((header_block, exit_block));
                 self.push_var_scope();
+                if let Some(lvar) = loop_var {
+                    let ptr = self.fresh_reg();
+                    self.emit(IrInstruction::Alloca { dest: ptr, ty: Type::Int });
+                    self.insert_var(lvar.clone(), ptr, Type::Int);
+                }
+                if let Some(ivar) = index_var {
+                    let ptr = self.fresh_reg();
+                    self.emit(IrInstruction::Alloca { dest: ptr, ty: Type::Int });
+                    self.insert_var(ivar.clone(), ptr, Type::Int);
+                }
                 for s in body {
                     self.build_stmt(s);
                     if self.is_current_terminated() {
@@ -686,7 +698,23 @@ impl IrBuilder {
             }
             StmtKind::Yield(expr) => {
                 let val = self.build_expr(expr);
-                self.emit(IrInstruction::Return { val: Some(val) });
+                if let Some((res_ptr_opt, list_ptr_opt)) = self.yield_target_stack.last().cloned() {
+                    if let Some(res_ptr) = res_ptr_opt {
+                        self.emit(IrInstruction::Store { val, ptr: res_ptr });
+                    } else if let Some(list_ptr) = list_ptr_opt {
+                        let obj_reg = self.fresh_reg();
+                        let list_ty = Type::Class { name: "List".into() };
+                        self.emit(IrInstruction::Load { dest: obj_reg, ptr: list_ptr, ty: list_ty.clone() });
+                        self.emit(IrInstruction::CallRuntime {
+                            dest: None,
+                            symbol: "talas_list_add".into(),
+                            args: vec![IrOperand::Register(obj_reg, list_ty), val],
+                            ret_ty: Type::Void,
+                        });
+                    }
+                } else {
+                    self.emit(IrInstruction::Return { val: Some(val) });
+                }
             }
             StmtKind::Guard { body, catch_clause, exit_body } => {
                 let err_ty = Type::Nullable(Box::new(Type::Class { name: "Error".into() }));
@@ -2029,6 +2057,103 @@ impl IrBuilder {
                     ret_ty: Type::Int,
                 });
                 IrOperand::Register(dest, Type::Int)
+            }
+            ExprKind::If { condition, then_branch, else_branch } => {
+                let res_ptr = self.fresh_reg();
+                self.emit(IrInstruction::Alloca { dest: res_ptr, ty: Type::Int });
+                self.emit(IrInstruction::Store { val: IrOperand::Null, ptr: res_ptr });
+
+                let then_block = self.fresh_block();
+                let else_block = self.fresh_block();
+                let merge_block = self.fresh_block();
+
+                let cond_op = self.build_expr(condition);
+                self.emit(IrInstruction::Branch {
+                    cond: cond_op,
+                    then_block,
+                    else_block,
+                });
+                if let Some(cb) = self.current_block_id {
+                    self.finish_block(cb);
+                }
+
+                // Then block
+                self.current_block_id = Some(then_block);
+                self.yield_target_stack.push((Some(res_ptr), None));
+                self.push_var_scope();
+                for s in then_branch {
+                    self.build_stmt(s);
+                    if self.is_current_terminated() {
+                        break;
+                    }
+                }
+                if !self.is_current_terminated() {
+                    self.emit(IrInstruction::Jump { target: merge_block });
+                }
+                if let Some(cb) = self.current_block_id {
+                    self.finish_block(cb);
+                }
+                self.pop_var_scope();
+                self.yield_target_stack.pop();
+
+                // Else block
+                self.current_block_id = Some(else_block);
+                self.yield_target_stack.push((Some(res_ptr), None));
+                self.push_var_scope();
+                if let Some(eb) = else_branch {
+                    for s in eb {
+                        self.build_stmt(s);
+                        if self.is_current_terminated() {
+                            break;
+                        }
+                    }
+                }
+                if !self.is_current_terminated() {
+                    self.emit(IrInstruction::Jump { target: merge_block });
+                }
+                if let Some(cb) = self.current_block_id {
+                    self.finish_block(cb);
+                }
+                self.pop_var_scope();
+                self.yield_target_stack.pop();
+
+                self.current_block_id = Some(merge_block);
+                let res_reg = self.fresh_reg();
+                self.emit(IrInstruction::Load { dest: res_reg, ptr: res_ptr, ty: Type::Int });
+                IrOperand::Register(res_reg, Type::Int)
+            }
+            ExprKind::For { loop_var, index_var, condition_or_iterable, body, else_branch } => {
+                let list_ptr = self.fresh_reg();
+                let list_ty = Type::Class { name: "List".into() };
+                self.emit(IrInstruction::Alloca { dest: list_ptr, ty: list_ty.clone() });
+
+                let list_reg = self.fresh_reg();
+                self.emit(IrInstruction::CallRuntime {
+                    dest: Some(list_reg),
+                    symbol: "talas_list_create".into(),
+                    args: vec![],
+                    ret_ty: list_ty.clone(),
+                });
+                let empty_list = IrOperand::Register(list_reg, list_ty.clone());
+                self.emit(IrInstruction::Store { val: empty_list, ptr: list_ptr });
+
+                self.yield_target_stack.push((None, Some(list_ptr)));
+                let stmt_for = Stmt {
+                    kind: StmtKind::For {
+                        loop_var: loop_var.clone(),
+                        index_var: index_var.clone(),
+                        condition_or_iterable: condition_or_iterable.as_ref().map(|b| *b.clone()),
+                        body: body.clone(),
+                        else_branch: else_branch.clone(),
+                    },
+                    span: expr.span,
+                };
+                self.build_stmt(&stmt_for);
+                self.yield_target_stack.pop();
+
+                let res_reg = self.fresh_reg();
+                self.emit(IrInstruction::Load { dest: res_reg, ptr: list_ptr, ty: list_ty.clone() });
+                IrOperand::Register(res_reg, list_ty)
             }
             unsupported => {
                 self.diagnostics.push(Diagnostic::error(

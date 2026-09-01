@@ -191,6 +191,18 @@ pub enum ExprKind {
         task: Box<Expr>,
         timeout_ms: Box<Expr>,
     },
+    If {
+        condition: Box<Expr>,
+        then_branch: Vec<Stmt>,
+        else_branch: Option<Vec<Stmt>>,
+    },
+    For {
+        loop_var: Option<String>,
+        index_var: Option<String>,
+        condition_or_iterable: Option<Box<Expr>>,
+        body: Vec<Stmt>,
+        else_branch: Option<Vec<Stmt>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

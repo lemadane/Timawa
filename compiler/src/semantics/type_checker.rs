@@ -1468,6 +1468,77 @@ impl TypeChecker {
                 self.check_expr(cls, timeout_ms);
                 Some(Type::Int)
             }
+            ExprKind::If { condition, then_branch, else_branch } => {
+                let cond_ty = self.check_expr(cls, condition);
+                if let Some(cty) = cond_ty {
+                    if !self.is_valid_condition_type(&cty) {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!("If condition must be Bool or truthy expression, found '{:?}'", cty),
+                            Some(condition.span),
+                        ));
+                    }
+                }
+                let mut yield_ty = None;
+                self.symbol_table.push_scope();
+                for s in then_branch {
+                    self.check_stmt(cls, s);
+                    if let StmtKind::Yield(expr) = &s.kind {
+                        yield_ty = self.check_expr(cls, expr);
+                    }
+                }
+                self.symbol_table.pop_scope();
+
+                if let Some(eb) = else_branch {
+                    self.symbol_table.push_scope();
+                    for s in eb {
+                        self.check_stmt(cls, s);
+                        if let StmtKind::Yield(expr) = &s.kind {
+                            let e_ty = self.check_expr(cls, expr);
+                            if yield_ty.is_none() {
+                                yield_ty = e_ty;
+                            }
+                        }
+                    }
+                    self.symbol_table.pop_scope();
+                }
+                yield_ty.or(Some(Type::Int))
+            }
+            ExprKind::For { loop_var, index_var, condition_or_iterable, body, else_branch } => {
+                self.symbol_table.push_scope();
+                if let Some(lvar) = loop_var {
+                    self.symbol_table.insert(Symbol {
+                        name: lvar.clone(),
+                        ty: Type::Int,
+                        is_mutable: false,
+                    });
+                }
+                if let Some(ivar) = index_var {
+                    self.symbol_table.insert(Symbol {
+                        name: ivar.clone(),
+                        ty: Type::Int,
+                        is_mutable: false,
+                    });
+                }
+                if let Some(cond) = condition_or_iterable {
+                    self.check_expr(cls, cond);
+                }
+                self.loop_depth += 1;
+                for s in body {
+                    self.check_stmt(cls, s);
+                }
+                self.loop_depth -= 1;
+                self.symbol_table.pop_scope();
+
+                if let Some(eb) = else_branch {
+                    self.symbol_table.push_scope();
+                    for s in eb {
+                        self.check_stmt(cls, s);
+                    }
+                    self.symbol_table.pop_scope();
+                }
+
+                Some(Type::Class { name: "List".into() })
+            }
             _ => None,
         }
     }

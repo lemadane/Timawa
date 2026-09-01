@@ -1052,6 +1052,110 @@ impl<'a> Parser<'a> {
                     span: Span::combine(tok.span, end_tok.span),
                 })
             }
+            TokenKind::If => {
+                let start_span = tok.span;
+                self.expect(&TokenKind::OpenParen, "(")?;
+                let condition = self.parse_expr(Precedence::None)?;
+                self.expect(&TokenKind::CloseParen, ")")?;
+
+                self.expect(&TokenKind::OpenBrace, "{")?;
+                let mut then_branch = Vec::new();
+                while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
+                    then_branch.push(self.parse_stmt()?);
+                }
+                let mut end_span = self.expect(&TokenKind::CloseBrace, "}")?.span;
+
+                let else_branch = if self.match_token(&TokenKind::Else) {
+                    if self.check(&TokenKind::If) {
+                        let else_if = self.parse_if_stmt()?;
+                        end_span = else_if.span;
+                        Some(vec![else_if])
+                    } else {
+                        self.expect(&TokenKind::OpenBrace, "{")?;
+                        let mut else_stmts = Vec::new();
+                        while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
+                            else_stmts.push(self.parse_stmt()?);
+                        }
+                        end_span = self.expect(&TokenKind::CloseBrace, "}")?.span;
+                        Some(else_stmts)
+                    }
+                } else {
+                    None
+                };
+
+                Ok(Expr {
+                    kind: ExprKind::If {
+                        condition: Box::new(condition),
+                        then_branch,
+                        else_branch,
+                    },
+                    span: Span::combine(start_span, end_span),
+                })
+            }
+            TokenKind::For => {
+                let start_span = tok.span;
+                let mut loop_var = None;
+                let mut index_var = None;
+                let mut condition_or_iterable = None;
+
+                if self.match_token(&TokenKind::OpenParen) {
+                    if let TokenKind::Identifier(var1) = &self.current_token.kind {
+                        let var1_name = var1.clone();
+                        if self.peek_token.kind == TokenKind::In {
+                            self.advance();
+                            self.advance();
+                            loop_var = Some(var1_name);
+                            condition_or_iterable = Some(self.parse_expr(Precedence::None)?);
+                        } else if self.peek_token.kind == TokenKind::Comma {
+                            self.advance();
+                            self.advance();
+                            if let TokenKind::Identifier(var2) = &self.current_token.kind {
+                                let var2_name = var2.clone();
+                                self.advance();
+                                self.expect(&TokenKind::In, "in")?;
+                                index_var = Some(var1_name);
+                                loop_var = Some(var2_name);
+                                condition_or_iterable = Some(self.parse_expr(Precedence::None)?);
+                            }
+                        } else {
+                            condition_or_iterable = Some(self.parse_expr(Precedence::None)?);
+                        }
+                    } else {
+                        condition_or_iterable = Some(self.parse_expr(Precedence::None)?);
+                    }
+                    self.expect(&TokenKind::CloseParen, ")")?;
+                }
+
+                self.expect(&TokenKind::OpenBrace, "{")?;
+                let mut body = Vec::new();
+                while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
+                    body.push(self.parse_stmt()?);
+                }
+                let mut end_span = self.expect(&TokenKind::CloseBrace, "}")?.span;
+
+                let else_branch = if self.match_token(&TokenKind::Else) {
+                    self.expect(&TokenKind::OpenBrace, "{")?;
+                    let mut else_stmts = Vec::new();
+                    while !self.check(&TokenKind::CloseBrace) && !self.check(&TokenKind::Eof) {
+                        else_stmts.push(self.parse_stmt()?);
+                    }
+                    end_span = self.expect(&TokenKind::CloseBrace, "}")?.span;
+                    Some(else_stmts)
+                } else {
+                    None
+                };
+
+                Ok(Expr {
+                    kind: ExprKind::For {
+                        loop_var,
+                        index_var,
+                        condition_or_iterable: condition_or_iterable.map(Box::new),
+                        body,
+                        else_branch,
+                    },
+                    span: Span::combine(start_span, end_span),
+                })
+            }
             _ => {
                 self.diagnostics.push(Diagnostic::error(
                     format!("Unexpected expression token {:?}", tok.kind),

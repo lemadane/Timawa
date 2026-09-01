@@ -3617,3 +3617,87 @@ fn test_e2e_for_else_non_empty_collection_skips_else() {
         builder.diagnostics
     );
 }
+
+#[test]
+fn test_e2e_if_expression_with_braces_and_yield() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final score = 85
+                final status = if (score >= 50) {
+                    yield `Passed`
+                } else {
+                    yield `Failed`
+                }
+                print(`Status: ${status}`)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing if expression failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking if expression failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let _ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building if expression failed: {:?}",
+        builder.diagnostics
+    );
+}
+
+#[test]
+fn test_e2e_for_expression_comprehension_with_braces_and_yield() {
+    let source_code = r#"
+        class Application {
+            main() {
+                final numbers = [1, 2, 3]
+                final doubled = for (x in numbers) {
+                    yield x * 2
+                }
+                print(`Doubled list length: ${doubled.len()}`)
+            }
+        }
+    "#;
+
+    let lexer = Lexer::new(source_code);
+    let mut parser = Parser::new(lexer);
+    let program = parser.parse_program();
+
+    assert!(
+        parser.diagnostics.is_empty(),
+        "Parsing for expression comprehension failed: {:?}",
+        parser.diagnostics
+    );
+
+    let mut checker = TypeChecker::new();
+    assert!(
+        checker.check_program(&program),
+        "Type checking for expression comprehension failed: {:?}",
+        checker.diagnostics
+    );
+
+    let mut builder = IrBuilder::new();
+    let _ir_program = builder.build_program(&program);
+
+    assert!(
+        builder.diagnostics.is_empty(),
+        "IR building for expression comprehension failed: {:?}",
+        builder.diagnostics
+    );
+}
