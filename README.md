@@ -1,4 +1,4 @@
-# Timawa (Free Warrior) Programming Language
+# Timawa (Free Warrior Class) Programming Language
 
 > **Sharp, simple, native.**
 
