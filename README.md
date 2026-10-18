@@ -1,4 +1,4 @@
-# Timawa (Free Warrior Class) Programming Language
+# Timawa Programming Language
 
 > **Sharp, simple, native.**
 
@@ -6,7 +6,7 @@
 [![Compiler Status](https://img.shields.io/badge/compiler-Rust%20%2B%20LLVM-orange.svg)](ARCHITECTURE.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Timawa** is a NO INHERITANCE, NO INTERFACE, pure object-oriented composition programming language designed for native performance, low memory footprint, and high safety. Positioned between GO and JAVA, **Timawa** combines native single-binary deployment and direct native code generation via LLVM like RUST.
+**Timawa** (name taken for Ancient Philippine Samurai like warriors) is a NO INHERITANCE, NO INTERFACE, pure object-oriented composition programming language designed for native performance, low memory footprint, and high safety. Positioned between GO and JAVA, **Timawa** combines native single-binary deployment and direct native code generation via LLVM like RUST.
 
 ---
 
@@ -14,8 +14,7 @@
 
 ### 1. Pure Object-Oriented (No `static`, No Free Functions)
 - **No Static Methods, Fields, or Classes**: Every executable function in Timawa must be an instance method belonging to a class object.
-- **No Free-Standing Functions**: All code is encapsulated inside classes.
-- **Application Entry Point**: The application entry point is an instance method (`main()`) on an `Application` class. The compiler automatically generates the native C-ABI wrapper.
+ - **Application Entry Point**: The application entry point is an instance method (`main()`) on an `Application` class. The compiler automatically generates the native C-ABI wrapper.
 - **Singletons via Dependency Injection**: Singletons are created once at application startup inside `Application.main()` and passed via primary constructors.
 
 ### 2. Zero Inheritance & Maximum Performance
