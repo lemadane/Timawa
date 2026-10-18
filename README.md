@@ -1,6 +1,6 @@
 # Timawa Programming Language
 
-> **Sharp, simple, native.**
+> **Formidable, simple, native.**
 
 [![Language Specification](https://img.shields.io/badge/spec-v0.6.0-blue.svg)](LANGUAGE_SPEC_DRAFT.md)
 [![Compiler Status](https://img.shields.io/badge/compiler-Rust%20%2B%20LLVM-orange.svg)](ARCHITECTURE.md)
