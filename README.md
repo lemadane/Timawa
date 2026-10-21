@@ -6,7 +6,7 @@
 [![Compiler Status](https://img.shields.io/badge/compiler-Rust%20%2B%20LLVM-orange.svg)](ARCHITECTURE.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Timawa** (name taken for Ancient Philippine Samurai like warriors) is a NO INHERITANCE, NO INTERFACE, pure object-oriented composition programming language designed for native performance, low memory footprint, and high safety. Positioned between GO and JAVA, **Timawa** combines native single-binary deployment and direct native code generation via LLVM like RUST.
+**Ube** (name taken for the delicious Philippine  root crop) is a NO INHERITANCE, NO INTERFACE, pure object-oriented composition programming language designed for native performance, low memory footprint, and high safety. Positioned between GO and JAVA, **Timawa** combines native single-binary deployment and direct native code generation via LLVM like RUST.
 
 ---
 
