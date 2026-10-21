@@ -1,4 +1,4 @@
-# Timawa Programming Language
+# Ube Programming Language
 
 > **Formidable, simple, native.**
 
@@ -13,12 +13,12 @@
 ## Language Core Principles & Policies
 
 ### 1. Pure Object-Oriented (No `static`, No Free Functions)
-- **No Static Methods, Fields, or Classes**: Every executable function in Timawa must be an instance method belonging to a class object.
+- **No Static Methods, Fields, or Classes**: Every executable function in Ube must be an instance method belonging to a class object.
  - **Application Entry Point**: The application entry point is an instance method (`main()`) on an `Application` class. The compiler automatically generates the native C-ABI wrapper.
 - **Singletons via Dependency Injection**: Singletons are created once at application startup inside `Application.main()` and passed via primary constructors.
 
 ### 2. Zero Inheritance & Maximum Performance
-- **No `extends` or Abstract Classes**: Timawa has **no inheritance**.
+- **No `extends` or Abstract Classes**: Ube has **no inheritance**.
 - **0-Byte Vtable Overhead**: Because there is no inheritance, every method call is 100% statically known at compile time. There are no virtual method table (vtable) lookups.
 - **Aggressive Inlining**: LLVM inlines instance method bodies directly into caller sites.
 - **Cache Locality**: Class instance headers do not store virtual pointer (`vptr`) fields, resulting in smaller memory headers and superior CPU L1/L2/L3 cache hit rates.
@@ -34,7 +34,7 @@
 - **Enums via Sum Classes**: Enumerations and algebraic variants are declared using `case` clauses inside a `class` (e.g. `class Status { case Pending; case Approved(long orderId) }`).
 
 ### 5. No `void` Keyword & Implicit Void Return Types
-- **No `void` Keyword**: The `void` keyword does not exist in Timawa.
+- **No `void` Keyword**: The `void` keyword does not exist in Ube.
 - **Implicit Void Return Type**: Methods declared without a return type automatically return void (`main() { ... }` or `birthday() { ... }`).
 - **Explicit Return Types**: Methods returning values specify the return type before the method name (`int getAge() { return this._age }`).
 
@@ -62,7 +62,7 @@
 - Optional chaining (`?.`), null coalescing (`??`), and null-coalescing assignment (`??=`).
 
 ### 12. Collections Policy & Unified `for` Loops (No `while` Keyword)
-- **`for` is the Sole Loop Keyword**: There is no `while` or `do-while` keyword in Timawa.
+- **`for` is the Sole Loop Keyword**: There is no `while` or `do-while` keyword in Ube.
 - **`for` / `else` (0-Iteration Fallback)**: `for (item in items) { ... } else { ... }`. The `else` block executes **ONLY if the loop body executed 0 times** (e.g. collection is empty `[]`, `null`, or condition is initially `false`).
 - **`break` & `continue`**: `break` exits the nearest loop or guard block; `continue` skips to the next iteration.
 - **`Array<T>`**: Fixed-size contiguous buffer (`Array<int>(10)`).
@@ -119,7 +119,7 @@
 - **Exception-Free File Operations**: High-performance IO without exceptions (`FileError`, `FileNotFoundError`, `PermissionError`, `AlreadyExistsError`, `InvalidPathError`, `DiskFullError`).
 - **Object-Oriented & Static Helpers**: `File.read("app.txt")`, `File.write("out.txt", data)`, `file = File.open(path)`, `file.read()`, `file.close()`.
 - **Deferred Cleanup**: Native deferred cleanup using `after file.close()` syntax.
-- **Directories & Paths**: `Directory.create("logs")`, `Path.join("src", "main.Timawa")`.
+- **Directories & Paths**: `Directory.create("logs")`, `Path.join("src", "main.Ube")`.
 
 ### 21. High-Performance Web Server Standard Library (`Server`, `Request`, `Response`, `HTTP/1.1`, `HTTP/2`, `HTTP/3 QUIC`)
 - **Express / Ktor Ergonomics**: Express-style fluent routing: `server.get("/users") { request -> ... }`, `server.post()`, `server.put()`, `server.delete()`, `server.use()` (middleware), `server.static()`, `server.websocket()`, `server.start(8080)`.
@@ -129,7 +129,7 @@
 ### 22. First-Class Native JSON & XML Record Mapping (`Json`, `JsonObject`, `JsonArray`, `Xml`, `XmlDocument`, `XmlElement`)
 - **Bi-Directional Document & Class Mapping**: `Json.parse(text)`, `Json.partialParse(text, TargetClass)`, `Json.stringify(obj)`, `Json.from(obj)`, `Json.to(text, TargetClass)`.
 - **XML Document Traversal & Generation**: `Xml.parse(text)`, `Xml.create("root")`, `doc.root().child("tag").text()`, `doc.toString()`.
-- **Reversible Character Codec (`DataNameCodec`)**: Maps XML/JSON tag/key names with hyphens (`Facility-ID`), namespaces (`rest:KitchenOrderScan`), or dots to Timawa identifier conventions (`Facility$hyphen$ID`, `rest$KitchenOrderScan`).
+- **Reversible Character Codec (`DataNameCodec`)**: Maps XML/JSON tag/key names with hyphens (`Facility-ID`), namespaces (`rest:KitchenOrderScan`), or dots to Ube identifier conventions (`Facility$hyphen$ID`, `rest$KitchenOrderScan`).
 - **Strict vs. Partial Parsing Modes**: Strict mode enforces 1-to-1 structural completeness; Partial mode selectively maps declared components while assigning defaults (`null`, `List.of()`, `0`, `false`).
 - **Structured Format Error Handling**: Exception-free error handling via `guard`/`catch(err)` with `JsonParseError`, `XmlParseError`, `MissingDataError`, `ExcessDataError`.
 
@@ -137,24 +137,24 @@
 
 ## VS Code Extension & Syntax Highlighting
 
-Timawa includes an official VS Code extension in [`editors/vscode`](editors/vscode) providing full `.Timawa` file recognition, syntax highlighting, bracket matching, string interpolation highlighting, and code folding.
+Ube includes an official VS Code extension in [`editors/vscode`](editors/vscode) providing full `.Ube` file recognition, syntax highlighting, bracket matching, string interpolation highlighting, and code folding.
 
 ### Installation Options:
 
 #### Option 1: Quick Install (Copy Extension Directory)
 ```bash
 # Linux / macOS
-cp -r editors/vscode ~/.vscode/extensions/Timawa-vscode
+cp -r editors/vscode ~/.vscode/extensions/Ube-vscode
 
 # Windows (Command Prompt)
-xcopy /E /I editors\vscode %USERPROFILE%\.vscode\extensions\Timawa-vscode
+xcopy /E /I editors\vscode %USERPROFILE%\.vscode\extensions\Ube-vscode
 ```
 
 #### Option 2: Build & Install `.vsix` Package
 ```bash
 cd editors/vscode
 npx vsce package
-code --install-extension Timawa-vscode-0.5.0.vsix
+code --install-extension Ube-vscode-0.5.0.vsix
 ```
 
 ---
@@ -183,7 +183,7 @@ class User(
 
 ### 2. Structural `trait` Subtyping (No `implements` Keyword)
 
-In Timawa, `trait` provides behavioral contracts and default method bodies. Classes satisfy traits **implicitly** without an `implements` keyword:
+In Ube, `trait` provides behavioral contracts and default method bodies. Classes satisfy traits **implicitly** without an `implements` keyword:
 
 ```java
 trait Printable {
@@ -228,7 +228,7 @@ class Application {
 
 ### 3. The `not` Keyword Use Cases
 
-In Timawa, the exclamation symbol `!` is not a valid operator. Logical negation and type checks use the `not` keyword:
+In Ube, the exclamation symbol `!` is not a valid operator. Logical negation and type checks use the `not` keyword:
 
 ```java
 class Application {
@@ -257,7 +257,7 @@ class Application {
 
 ### 4. Composition Over Inheritance Use Cases
 
-Because Timawa has **no `extends` keyword**, code reuse and polymorphism are achieved cleanly through **Composition & Delegation**:
+Because Ube has **no `extends` keyword**, code reuse and polymorphism are achieved cleanly through **Composition & Delegation**:
 
 ```java
 // Component Class 1: Engine
@@ -307,7 +307,7 @@ class Application {
 
 ### 5. Singleton Implementation via Application-Scoped Dependency Injection
 
-Because Timawa omits global static variables, singletons are created once at application startup and passed into dependent services:
+Because Ube omits global static variables, singletons are created once at application startup and passed into dependent services:
 
 ```java
 class DatabaseConnection(string connectionUrl) {
@@ -345,7 +345,7 @@ class Application {
 
 ### 6. All Enum Use Cases via Sum Classes
 
-In Timawa, enumerations are declared using **Sum Classes** (defining `case` clauses inside a `class`):
+In Ube, enumerations are declared using **Sum Classes** (defining `case` clauses inside a `class`):
 
 ```java
 // Use Case 1: Simple Unit Enumerations (No Payloads)
@@ -417,7 +417,7 @@ class Application {
 
 ### 7. All `switch` Control Flow Use Cases
 
-In Timawa, `switch` is a first-class expression and statement supporting 6 core pattern-matching use cases (no fall-through, no `break` required inside cases):
+In Ube, `switch` is a first-class expression and statement supporting 6 core pattern-matching use cases (no fall-through, no `break` required inside cases):
 
 ```java
 class Application {
@@ -482,7 +482,7 @@ class Application {
 
 ### 8. All `for` Loop Use Cases (With `break` and `continue`)
 
-Timawa uses `for` as its **sole loop keyword** (no `while` or `do-while`).
+Ube uses `for` as its **sole loop keyword** (no `while` or `do-while`).
 
 ```java
 class Application {
@@ -548,7 +548,7 @@ class Application {
 
 ### 9. Truthy & Falsy Control Flow with Word Booleans
 
-In Timawa, conditions in `if (condition)` statements evaluate **truthiness and falsiness** without requiring explicit boolean comparisons:
+In Ube, conditions in `if (condition)` statements evaluate **truthiness and falsiness** without requiring explicit boolean comparisons:
 
 ```java
 class Application {
@@ -573,7 +573,7 @@ class Application {
 
 ### 10. Word-Based Logical Operators (`not`, `and`, `nand`, `or`, `nor`, `xor`, `xnor`)
 
-Timawa uses English words for all boolean operators instead of symbols like `!`, `&&`, `||`:
+Ube uses English words for all boolean operators instead of symbols like `!`, `&&`, `||`:
 
 ```java
 class Application {
@@ -607,7 +607,7 @@ class Application {
 
 ### 11. Virtual Thread Task Concurrency (`async`, `await`, `Task` Combinators & `Channel`)
 
-In Timawa, lightweight task-based concurrency is patterned after Java Virtual Threads (`vt-async-await`). Tasks can be spawned with `async`, `Task.async()`, or `async method()`, awaited sequentially, or coordinated via static promise combinators:
+In Ube, lightweight task-based concurrency is patterned after Java Virtual Threads (`vt-async-await`). Tasks can be spawned with `async`, `Task.async()`, or `async method()`, awaited sequentially, or coordinated via static promise combinators:
 
 ```java
 class CustomerService {
@@ -886,29 +886,29 @@ source "$HOME/.cargo/env"
 
 ```bash
 cargo build --release --workspace
-sudo cp target/release/Timawa-compiler /usr/local/bin/Timawa
+sudo cp target/release/ube-compiler /usr/local/bin/ube
 sudo cp target/release/libTimawa_runtime.a /usr/local/lib/libTimawa_runtime.a
 ```
 
 ### 3. Usage Commands
 
 ```bash
-# 1. Create a new Timawa project folder structure
-Timawa new my_app
+# 1. Create a new Ube project folder structure
+Ube new my_app
 cd my_app
 
 # 2. Fast syntax and static type check
-Timawa check src/main.Timawa
+Ube check src/main.ube
 
 # 3. Fast compile & execute immediately (1-step execution)
-Timawa run src/main.Timawa
+Ube run src/main.ube
 
 # 4. Build standalone native release executable (with -O3 & LTO optimization)
-Timawa build --release src/main.Timawa -o my_app
+Ube build --release src/main.ube -o my_app
 ./my_app
 
 # 5. (Optional) Inspect generated textual LLVM IR for compiler debugging
-Timawa emit-llvm src/main.Timawa -o main.ll
+Ube emit-llvm src/main.ube -o main.ll
 ```
 
 ---
